@@ -80,4 +80,4 @@ def default_app() -> FastAPI:
     from app.cli import provider_for
 
     cfg = settings()
-    return create_app(Store(cfg.db_path), provider_for(cfg))
+    return create_app(Store(cfg.database), provider_for(cfg))

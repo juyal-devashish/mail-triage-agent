@@ -163,7 +163,13 @@ Transport = Callable[[dict[str, Any]], ResponseLike]
 def anthropic_transport() -> Transport:
     """Calls Claude through the official SDK, with server-side refusal fallbacks turned on."""
     import anthropic  # optional dependency: pip install ".[llm]"
+    from dotenv import load_dotenv
 
+    from app.config import BACKEND
+
+    # Settings read only MTA_* keys from .env; the SDK reads ANTHROPIC_API_KEY from the environment,
+    # so export the rest of backend/.env without overriding variables that are already set.
+    load_dotenv(BACKEND / ".env", override=False)
     client = anthropic.Anthropic()
 
     def send(kwargs: dict[str, Any]) -> ResponseLike:

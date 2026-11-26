@@ -6,6 +6,7 @@ from app.synth.inbox import generate
 
 class SyntheticProvider:
     name = "synthetic"
+    authoritative = False
 
     def __init__(self, seed: int = 7, size: int = 150) -> None:
         self._messages, _ = generate(seed=seed, size=size)  # the answer key is dropped here on purpose

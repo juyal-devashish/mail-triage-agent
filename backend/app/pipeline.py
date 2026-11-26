@@ -20,7 +20,12 @@ class RunResult:
 
 def sync(store: Store, provider: MailProvider) -> int:
     messages = provider.fetch()
-    store.upsert_messages(messages)
+    store.upsert_messages(messages, update_labels=provider.authoritative)
+    if provider.authoritative:
+        fetched = {m.id for m in messages}
+        for m in store.messages():
+            if "INBOX" in m.labels and m.id not in fetched:
+                store.set_labels(m.id, [x for x in m.labels if x != "INBOX"])  # archived elsewhere, or aged out
     return len(messages)
 
 

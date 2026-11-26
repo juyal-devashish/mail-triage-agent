@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MTA_", env_file=BACKEND / ".env", extra="ignore")
 
     provider: Literal["synthetic", "gmail"] = "synthetic"
-    db_path: Path = BACKEND / "data" / "synthetic.db"
+    db_path: Path | None = None  # default: data/<provider>.db, so real and synthetic mail never mix
+
+    @property
+    def database(self) -> Path:
+        return self.db_path or BACKEND / "data" / f"{self.provider}.db"
 
     # Claude
     model: str = "claude-opus-5-5"

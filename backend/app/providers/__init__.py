@@ -9,6 +9,10 @@ class MailProvider(Protocol):
     """A mailbox. Label changes are the only writes: archive removes INBOX, mark-read removes UNREAD."""
 
     name: str
+    # True when the remote mailbox is the source of truth for labels (Gmail). A sync then overwrites the
+    # local mirror and drops INBOX from local messages that left the inbox. False for the synthetic
+    # inbox, whose label changes live only in the local store.
+    authoritative: bool
 
     def fetch(self) -> list[Message]:
         """Messages currently in the inbox, newest first."""

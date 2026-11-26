@@ -4,6 +4,7 @@ Command line. Run from backend/ with the virtualenv: `python -m app.cli <command
   demo       rebuild the synthetic database from stored responses (never calls the API)
   estimate   rough cost of triaging what has no answer yet
   triage     triage what has no answer yet; live calls need --live and stop at --max-calls
+  gmail-login  sign in to Gmail once (browser consent); see docs/gmail.md
   eval       score stored answers for the synthetic inbox against its answer key
 """
 
@@ -40,8 +41,8 @@ def cmd_demo(cfg: Settings, _: argparse.Namespace) -> int:
     if cfg.provider != "synthetic":
         print("demo only runs on the synthetic inbox (unset MTA_PROVIDER)", file=sys.stderr)
         return 2
-    Path(cfg.db_path).unlink(missing_ok=True)
-    store = Store(cfg.db_path)
+    Path(cfg.database).unlink(missing_ok=True)
+    store = Store(cfg.database)
     sync(store, provider_for(cfg))
     result = run_triage(
         store, None, cache_for(cfg), model=cfg.model, effort=cfg.effort, max_tokens=cfg.max_tokens, max_calls=0
@@ -51,7 +52,7 @@ def cmd_demo(cfg: Settings, _: argparse.Namespace) -> int:
         f"synthetic inbox: {result.synced} messages, stored answers for {counts.get('ok', 0)}, "
         f"{counts.get('budget', 0)} without one (shown as 'not triaged yet')"
     )
-    print(f"database: {cfg.db_path}")
+    print(f"database: {cfg.database}")
     return 0
 
 
@@ -61,7 +62,7 @@ def _todo(store: Store, force: bool) -> list:
 
 
 def cmd_estimate(cfg: Settings, args: argparse.Namespace) -> int:
-    store = Store(cfg.db_path)
+    store = Store(cfg.database)
     sync(store, provider_for(cfg))
     todo = _todo(store, args.force)
     cache = cache_for(cfg)
@@ -82,7 +83,7 @@ def cmd_estimate(cfg: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_triage(cfg: Settings, args: argparse.Namespace) -> int:
-    store = Store(cfg.db_path)
+    store = Store(cfg.database)
     sync(store, provider_for(cfg))
     transport = anthropic_transport() if args.live else None
     max_calls = args.max_calls if args.max_calls is not None else cfg.max_calls
@@ -125,6 +126,18 @@ def cmd_eval(cfg: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gmail_login(cfg: Settings, _: argparse.Namespace) -> int:
+    from app.providers.gmail import GmailSetupError, login
+
+    try:
+        login(cfg.gmail_dir)
+    except GmailSetupError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(f"Signed in. Token saved to {cfg.gmail_dir / 'token.json'} (owner-only).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -138,9 +151,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true", help="re-ask messages that already have an answer")
     p = sub.add_parser("eval", help="score stored answers for the synthetic inbox against its answer key")
     p.add_argument("--write", action="store_true", help="also write docs/results.md")
+    sub.add_parser("gmail-login", help="sign in to Gmail once (browser consent)")
     args = parser.parse_args(argv)
     cfg = settings()
-    return {"demo": cmd_demo, "estimate": cmd_estimate, "triage": cmd_triage, "eval": cmd_eval}[args.command](cfg, args)
+    try:
+        return {
+            "demo": cmd_demo,
+            "estimate": cmd_estimate,
+            "triage": cmd_triage,
+            "eval": cmd_eval,
+            "gmail-login": cmd_gmail_login,
+        }[args.command](cfg, args)
+    except Exception as exc:
+        if type(exc).__name__ == "GmailSetupError":
+            print(exc, file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":

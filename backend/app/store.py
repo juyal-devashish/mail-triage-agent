@@ -57,11 +57,11 @@ class Store:
 
     # --- messages ---------------------------------------------------------------------------------------
 
-    def upsert_messages(self, messages: Iterable[Message]) -> None:
+    def upsert_messages(self, messages: Iterable[Message], update_labels: bool = True) -> None:
+        conflict = "DO UPDATE SET labels=excluded.labels" if update_labels else "DO NOTHING"
         with self.db:
             self.db.executemany(
-                "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(id) DO UPDATE SET labels=excluded.labels",
+                f"INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) {conflict}",
                 [
                     (
                         m.id,

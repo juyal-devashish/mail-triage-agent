@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+
+# Runtime data: SQLite databases, the model-response cache for real mail, run logs
+backend/data/
+backend/runs/
+*.db
+*.sqlite
+
+# Secrets and OAuth material (tokens live in ~/.config/mail-triage-agent/, never here)
+.env
+.env.*
+!.env.example
+credentials*.json
+client_secret*.json
+token*.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-static/
+*.tsbuildinfo
+
+# macOS
+.DS_Store

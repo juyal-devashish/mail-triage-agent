@@ -4,6 +4,7 @@ Command line. Run from backend/ with the virtualenv: `python -m app.cli <command
   demo       rebuild the synthetic database from stored responses (never calls the API)
   estimate   rough cost of triaging what has no answer yet
   triage     triage what has no answer yet; live calls need --live and stop at --max-calls
+  eval       score stored answers for the synthetic inbox against its answer key
 """
 
 import argparse
@@ -108,6 +109,22 @@ def cmd_triage(cfg: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(cfg: Settings, args: argparse.Namespace) -> int:
+    from app.evals import evaluate, report
+    from app.synth.inbox import generate
+
+    messages, key = generate()
+    result = evaluate(
+        messages, key, ResponseCache(SYNTH_RESPONSES), model=cfg.model, effort=cfg.effort, max_tokens=cfg.max_tokens
+    )
+    text = report(result, cfg.model, cfg.effort)
+    print(text)
+    if args.write:
+        (BACKEND.parent / "docs" / "results.md").write_text(text, encoding="utf-8")
+        print("wrote docs/results.md")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -119,9 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--live", action="store_true", help="allow real API calls (otherwise cache only)")
     p.add_argument("--max-calls", type=int, help="cap on live calls this run (default MTA_MAX_CALLS)")
     p.add_argument("--force", action="store_true", help="re-ask messages that already have an answer")
+    p = sub.add_parser("eval", help="score stored answers for the synthetic inbox against its answer key")
+    p.add_argument("--write", action="store_true", help="also write docs/results.md")
     args = parser.parse_args(argv)
     cfg = settings()
-    return {"demo": cmd_demo, "estimate": cmd_estimate, "triage": cmd_triage}[args.command](cfg, args)
+    return {"demo": cmd_demo, "estimate": cmd_estimate, "triage": cmd_triage, "eval": cmd_eval}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

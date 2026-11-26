@@ -72,7 +72,10 @@ def redecide(store: Store, ids: list[str] | None = None) -> int:
 
 
 def correct(store: Store, message_id: str, to_bucket: Bucket, scope: RuleScope = "sender") -> list[str]:
-    """Move one email to another bucket and, by default, make a rule for its sender. Returns the ids re-decided."""
+    """Move one email to another bucket and, by default, make a rule for its sender.
+
+    Returns the corrected id followed by the ids of other emails whose bucket changed because of the rule.
+    """
     message = store.message(message_id)
     current = store.verdicts().get(message_id)
     if message is None or current is None:
@@ -92,5 +95,8 @@ def correct(store: Store, message_id: str, to_bucket: Bucket, scope: RuleScope =
         for m in store.messages()
         if m.id != message_id and (m.from_email.lower() == pattern.lower() or m.sender_domain == pattern.lower())
     ]
+    before = store.verdicts()
     redecide(store, same_sender)
-    return [message_id, *same_sender]
+    after = store.verdicts()
+    moved = [i for i in same_sender if i in after and (i not in before or before[i].bucket != after[i].bucket)]
+    return [message_id, *moved]

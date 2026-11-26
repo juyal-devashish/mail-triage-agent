@@ -6,6 +6,7 @@ app wouldn't.
 """
 
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any
 
 import nh3
@@ -71,6 +72,15 @@ def item(provider: str, m: Message, v: Verdict) -> dict[str, Any]:
     }
 
 
+def as_of(provider: str) -> str:
+    """'Now' for relative times and due dates: the synthetic inbox has a fixed clock."""
+    if provider == "synthetic":
+        from app.synth.inbox import NOW
+
+        return NOW.isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
 def inbox_view(store: Store, provider: str) -> dict[str, Any]:
     verdicts = store.verdicts()
     rows = [(m, verdicts[m.id]) for m in store.messages() if "INBOX" in m.labels and m.id in verdicts]
@@ -90,6 +100,7 @@ def inbox_view(store: Store, provider: str) -> dict[str, Any]:
     return {
         "provider": provider,
         "synthetic": provider == "synthetic",
+        "as_of": as_of(provider),
         "counts": {"needs_you": len(needs), "fyi": len(fyi), "noise": total_noise, "inbox": len(rows)},
         "needs_you": needs,
         "fyi": fyi,

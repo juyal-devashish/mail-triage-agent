@@ -76,3 +76,9 @@ def test_redecide_keeps_corrections(store):
 def test_empty_id_list_is_a_no_op(store, provider):
     assert store.messages([]) == []
     assert apply_action(store, provider, "archive", []).batch_id is None
+
+
+def test_correct_reports_only_emails_that_moved(store):
+    seed_verdicts(store, "fyi")
+    target = next(m for m in store.messages() if m.from_email == "deals@gearloft.example")
+    assert correct(store, target.id, "fyi") == [target.id]  # the others were already fyi

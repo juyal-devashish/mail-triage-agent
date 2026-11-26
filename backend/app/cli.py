@@ -5,6 +5,7 @@ Command line. Run from backend/ with the virtualenv: `python -m app.cli <command
   estimate   rough cost of triaging what has no answer yet
   triage     triage what has no answer yet; live calls need --live and stop at --max-calls
   gmail-login  sign in to Gmail once (browser consent); see docs/gmail.md
+  export-static  write the SYNTHETIC demo snapshot the hosted page reads
   eval       score stored answers for the synthetic inbox against its answer key
 """
 
@@ -138,6 +139,39 @@ def cmd_gmail_login(cfg: Settings, _: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_static(cfg: Settings, _: argparse.Namespace) -> int:
+    """Real API responses for the synthetic inbox, fetched the way the dashboard does. Refuses real mail."""
+    import json
+    import shutil
+
+    from app.providers.synthetic import SyntheticProvider
+    from app.views import inbox_view, message_view
+
+    store = Store(":memory:")
+    provider = SyntheticProvider()  # always synthetic, whatever MTA_PROVIDER says
+    sync(store, provider)
+    run_triage(
+        store,
+        None,
+        ResponseCache(SYNTH_RESPONSES),
+        model=cfg.model,
+        effort=cfg.effort,
+        max_tokens=cfg.max_tokens,
+        max_calls=0,
+    )
+    out = BACKEND.parent / "frontend" / "static-demo" / "demo"
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "messages").mkdir(parents=True)
+    inbox = inbox_view(store, provider.name)
+    assert inbox["synthetic"] is True
+    (out / "inbox.json").write_text(json.dumps(inbox, indent=1), encoding="utf-8")
+    for m in store.messages():
+        view = message_view(store, provider.name, m.id)
+        (out / "messages" / f"{m.id}.json").write_text(json.dumps(view), encoding="utf-8")
+    print(f"wrote {out} ({inbox['counts']['inbox']} synthetic messages)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -152,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("eval", help="score stored answers for the synthetic inbox against its answer key")
     p.add_argument("--write", action="store_true", help="also write docs/results.md")
     sub.add_parser("gmail-login", help="sign in to Gmail once (browser consent)")
+    sub.add_parser("export-static", help="write the SYNTHETIC demo snapshot for the hosted page")
     args = parser.parse_args(argv)
     cfg = settings()
     try:
@@ -161,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
             "triage": cmd_triage,
             "eval": cmd_eval,
             "gmail-login": cmd_gmail_login,
+            "export-static": cmd_export_static,
         }[args.command](cfg, args)
     except Exception as exc:
         if type(exc).__name__ == "GmailSetupError":

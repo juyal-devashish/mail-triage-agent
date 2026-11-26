@@ -145,6 +145,10 @@ class Store:
                 (message_id, answer.model_dump_json() if answer else None, prompt_version, self.now()),
             )
 
+    def answer_versions(self) -> dict[str, str]:
+        rows = self.db.execute("SELECT message_id, prompt_version FROM answers").fetchall()
+        return {r["message_id"]: r["prompt_version"] for r in rows}
+
     def answers(self) -> dict[str, ModelVerdict | None]:
         rows = self.db.execute("SELECT message_id, answer FROM answers").fetchall()
         return {r["message_id"]: ModelVerdict.model_validate_json(r["answer"]) if r["answer"] else None for r in rows}

@@ -10,6 +10,7 @@ verdict the dashboard shows, applying, in order:
 """
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -24,9 +25,9 @@ class ModelVerdict(BaseModel):
 
     bucket: Bucket
     category: Category
-    summary: str = Field(max_length=200, description="One line: what the email says.")
-    reason: str = Field(max_length=200, description="One line: why it belongs in this bucket.")
-    action: str | None = Field(default=None, max_length=120, description="Suggested next step, if any.")
+    summary: str = Field(description="One line: what the email says.")
+    reason: str = Field(description="One line: why it belongs in this bucket.")
+    action: str | None = Field(default=None, description="Suggested next step, if any.")
     deadline: str | None = Field(default=None, description="ISO date (YYYY-MM-DD) if the email has a due date.")
     confidence: Confidence
 
@@ -51,6 +52,7 @@ class Verdict:
 
 
 FALLBACK_REASON = "Couldn't triage this one automatically, so it's shown rather than hidden."
+PENDING_REASON = "Not triaged yet, so it's shown rather than hidden."
 
 
 def match_rule(message: Message, rules: list[SenderRule]) -> SenderRule | None:
@@ -58,14 +60,36 @@ def match_rule(message: Message, rules: list[SenderRule]) -> SenderRule | None:
     return by_pattern.get(message.from_email.lower()) or by_pattern.get(message.sender_domain)
 
 
-def decide(message: Message, answer: ModelVerdict | None, rules: list[SenderRule]) -> Verdict:
+def _iso_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def _line(text: str | None, limit: int) -> str | None:
+    """One line, capped: long answers are trimmed rather than rejected."""
+    if text is None:
+        return None
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def decide(
+    message: Message,
+    answer: ModelVerdict | None,
+    rules: list[SenderRule],
+    fallback_reason: str = FALLBACK_REASON,
+) -> Verdict:
     rule = match_rule(message, rules)
     if answer is None:
         base = Verdict(
             bucket="fyi",
             category="other",
-            summary=message.subject[:200],
-            reason=FALLBACK_REASON,
+            summary=_line(message.subject, 200) or "",
+            reason=fallback_reason,
             action=None,
             deadline=None,
             confidence="low",
@@ -81,10 +105,10 @@ def decide(message: Message, answer: ModelVerdict | None, rules: list[SenderRule
         base = Verdict(
             bucket=bucket,
             category=answer.category,
-            summary=answer.summary,
-            reason=reason,
-            action=answer.action,
-            deadline=answer.deadline,
+            summary=_line(answer.summary, 200) or "",
+            reason=_line(reason, 200) or "",
+            action=_line(answer.action, 120) if answer.bucket == "needs_you" else None,
+            deadline=_iso_date(answer.deadline),
             confidence=answer.confidence,
             source="model",
             model_bucket=answer.bucket,

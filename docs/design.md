@@ -62,3 +62,5 @@ frontend/  React + Vite, TypeScript strict. Static mode reads exported JSON, no 
 ## Gmail
 
 Local OAuth installed-app flow with the `gmail.modify` scope; the token lives in `~/.config/mail-triage-agent/`. Archive removes the `INBOX` label, mark-read removes `UNREAD`, and undo adds them back from the undo log. Gmail's category labels (Promotions, Updates, Social) are passed to the model as hints.
+
+Each sync re-reads the inbox for the last `MTA_GMAIL_DAYS` days (no `historyId` incremental sync yet), and Gmail's labels win, so mail archived in Gmail leaves the dashboard. If any message can't be fetched, the sync stops instead of returning a partial inbox. Syncing and triage run from the CLI (`triage`); the dashboard has no sync button yet, so a page load never spends money.

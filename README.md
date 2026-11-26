@@ -10,7 +10,7 @@ Wrong call? Move the email and the app turns that into a rule for the sender.
 
 It runs locally against your Gmail (archive and mark read only, never delete or send). A public demo runs on a **synthetic** inbox.
 
-See [docs/design.md](docs/design.md) for the design, [docs/gmail.md](docs/gmail.md) to connect your own inbox, and [docs/results.md](docs/results.md) for how well the triage does on the synthetic inbox.
+See [docs/design.md](docs/design.md) for the design, [docs/gmail.md](docs/gmail.md) to connect your own inbox, and `docs/results.md` (written by `eval --write` once the synthetic inbox has stored model answers) for how the triage scores against the synthetic answer key.
 
 ## Run it
 

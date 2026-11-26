@@ -12,6 +12,7 @@ Command line. Run from backend/ with the virtualenv: `python -m app.cli <command
 import argparse
 import logging
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,6 +23,22 @@ from app.providers import MailProvider
 from app.store import Store
 
 SYNTH_RESPONSES = BACKEND / "app" / "synth" / "responses.jsonl"  # stored answers for the SYNTHETIC inbox only
+# The stored synthetic answers were made with these settings. The cache key includes them, so they are
+# pinned here: changing MTA_MODEL for your own Gmail must not make the demo and eval find nothing.
+
+
+@dataclass(frozen=True)
+class ModelParams:
+    model: str
+    effort: str
+    max_tokens: int
+
+
+SYNTH = ModelParams("claude-opus-5-5", "low", 4000)
+
+
+def params_for(cfg: Settings) -> ModelParams:
+    return SYNTH if cfg.provider == "synthetic" else ModelParams(cfg.model, cfg.effort, cfg.max_tokens)
 
 
 def provider_for(cfg: Settings) -> MailProvider:
@@ -46,7 +63,7 @@ def cmd_demo(cfg: Settings, _: argparse.Namespace) -> int:
     store = Store(cfg.database)
     sync(store, provider_for(cfg))
     result = run_triage(
-        store, None, cache_for(cfg), model=cfg.model, effort=cfg.effort, max_tokens=cfg.max_tokens, max_calls=0
+        store, None, cache_for(cfg), model=SYNTH.model, effort=SYNTH.effort, max_tokens=SYNTH.max_tokens, max_calls=0
     )
     counts = result.summary.counts()
     print(
@@ -67,18 +84,18 @@ def cmd_estimate(cfg: Settings, args: argparse.Namespace) -> int:
     sync(store, provider_for(cfg))
     todo = _todo(store, args.force)
     cache = cache_for(cfg)
+    p = params_for(cfg)
     from app.llm.triage_llm import build_request, request_key
 
     uncached = [
         m
         for m in todo
-        if cache.get(request_key(build_request(m, store.recent_corrections(), cfg.model, cfg.effort, cfg.max_tokens)))
-        is None
+        if cache.get(request_key(build_request(m, store.recent_corrections(), p.model, p.effort, p.max_tokens))) is None
     ]
     est = estimate_cost(uncached, cfg.input_price, cfg.output_price)
     print(
         f"{len(todo)} to triage, {len(uncached)} not cached: ~{est['input_tokens']:,} input tokens, "
-        f"~${est['usd']:.2f} on {cfg.model} (rough estimate)"
+        f"~${est['usd']:.2f} on {p.model} (rough estimate; thinking tokens can add more)"
     )
     return 0
 
@@ -88,13 +105,14 @@ def cmd_triage(cfg: Settings, args: argparse.Namespace) -> int:
     sync(store, provider_for(cfg))
     transport = anthropic_transport() if args.live else None
     max_calls = args.max_calls if args.max_calls is not None else cfg.max_calls
+    p = params_for(cfg)
     result = run_triage(
         store,
         transport,
         cache_for(cfg),
-        model=cfg.model,
-        effort=cfg.effort,
-        max_tokens=cfg.max_tokens,
+        model=p.model,
+        effort=p.effort,
+        max_tokens=p.max_tokens,
         max_calls=max_calls if args.live else 0,
         force=args.force,
     )
@@ -117,9 +135,14 @@ def cmd_eval(cfg: Settings, args: argparse.Namespace) -> int:
 
     messages, key = generate()
     result = evaluate(
-        messages, key, ResponseCache(SYNTH_RESPONSES), model=cfg.model, effort=cfg.effort, max_tokens=cfg.max_tokens
+        messages,
+        key,
+        ResponseCache(SYNTH_RESPONSES),
+        model=SYNTH.model,
+        effort=SYNTH.effort,
+        max_tokens=SYNTH.max_tokens,
     )
-    text = report(result, cfg.model, cfg.effort)
+    text = report(result, SYNTH.model, SYNTH.effort)
     print(text)
     if args.write:
         (BACKEND.parent / "docs" / "results.md").write_text(text, encoding="utf-8")
@@ -150,15 +173,23 @@ def cmd_export_static(cfg: Settings, _: argparse.Namespace) -> int:
     store = Store(":memory:")
     provider = SyntheticProvider()  # always synthetic, whatever MTA_PROVIDER says
     sync(store, provider)
-    run_triage(
+    result = run_triage(
         store,
         None,
         ResponseCache(SYNTH_RESPONSES),
-        model=cfg.model,
-        effort=cfg.effort,
-        max_tokens=cfg.max_tokens,
+        model=SYNTH.model,
+        effort=SYNTH.effort,
+        max_tokens=SYNTH.max_tokens,
         max_calls=0,
     )
+    missing = result.summary.counts().get("budget", 0)
+    if missing:
+        print(
+            f"{missing} synthetic emails have no stored answer, so the demo would show them as 'not triaged yet'. "
+            "Run `triage --live` on the synthetic inbox first.",
+            file=sys.stderr,
+        )
+        return 1
     out = BACKEND.parent / "frontend" / "static-demo" / "demo"
     shutil.rmtree(out, ignore_errors=True)
     (out / "messages").mkdir(parents=True)

@@ -11,6 +11,7 @@ Setup: docs/gmail.md.
 import base64
 import logging
 import os
+import time
 from datetime import UTC, datetime
 from email.utils import parseaddr
 from pathlib import Path
@@ -167,7 +168,19 @@ class GmailProvider:
             for mid in ids[start : start + 50]:
                 batch.add(users.messages().get(userId="me", id=mid, format="full"), request_id=mid)
             batch.execute()
-        messages = [parse_message(raws[mid]) for mid in ids if mid in raws]
+        # Batched gets can fail one by one (rate limits). Retry those singly; if any still fail, stop the
+        # sync rather than return a partial inbox, which would make the missing mail look archived.
+        missing = [mid for mid in ids if mid not in raws]
+        for attempt, mid in enumerate(missing):
+            time.sleep(min(2.0, 0.2 * (attempt + 1)))
+            try:
+                raws[mid] = users.messages().get(userId="me", id=mid, format="full").execute()
+            except Exception as exc:  # noqa: BLE001 - any failure means the snapshot is incomplete
+                log.warning("Gmail get failed again for %s: %s", mid, type(exc).__name__)
+        still = [mid for mid in ids if mid not in raws]
+        if still:
+            raise GmailSetupError(f"Couldn't fetch {len(still)} of {len(ids)} inbox messages; try again shortly.")
+        messages = [parse_message(raws[mid]) for mid in ids]
         return sorted(messages, key=lambda m: m.date, reverse=True)
 
     def modify(self, ids: list[str], add: list[str], remove: list[str]) -> None:

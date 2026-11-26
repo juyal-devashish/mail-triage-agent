@@ -141,3 +141,22 @@ def test_synthetic_resync_keeps_local_archive(store, provider):
     apply_action(store, provider, "archive", [mid])
     sync(store, provider)
     assert "INBOX" not in store.message(mid).labels
+
+
+def test_failed_gets_stop_the_sync_instead_of_hiding_mail(monkeypatch):
+    import app.providers.gmail as gm
+
+    monkeypatch.setattr(gm.time, "sleep", lambda s: None)
+    p, fake = gmail_provider([RAW])
+    orig = fake.new_batch_http_request
+
+    def failing_batch(callback):
+        return orig(lambda rid, resp, exc: callback(rid, None, RuntimeError("429")))
+
+    fake.new_batch_http_request = failing_batch  # every batched get fails, and so does the single retry
+    store = Store(":memory:")
+    keep = Message("k1", "t", "X", "x@x.example", "me", "s", "2026-11-20T00:00:00+00:00", "b", labels=("INBOX",))
+    store.upsert_messages([keep])
+    with pytest.raises(gm.GmailSetupError):
+        sync(store, p)
+    assert "INBOX" in store.message("k1").labels

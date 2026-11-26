@@ -12,7 +12,7 @@ demo:               ## build the synthetic inbox and apply stored verdicts (no A
 	cd backend && $(PY) -m app.cli demo
 
 dev-backend:        ## API on :8000 with auto-reload
-	cd backend && $(PY) -m uvicorn app.main:app --reload --port 8000
+	cd backend && $(PY) -m uvicorn app.main:default_app --factory --reload --port 8000
 
 dev-frontend:       ## React dev server on :5173 (proxies /api to :8000)
 	cd frontend && npm run dev

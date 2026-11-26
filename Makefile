@@ -6,7 +6,7 @@ PY := .venv/bin/python
 
 install:            ## backend venv (editable, with dev tools and Claude support) and frontend deps
 	cd backend && python3.12 -m venv .venv && $(PY) -m pip install -q -e ".[dev,llm,gmail]"
-	cd frontend && npm install
+	if [ -f frontend/package.json ]; then cd frontend && npm install; fi
 
 demo:               ## build the synthetic inbox and apply stored verdicts (no API calls)
 	cd backend && $(PY) -m app.cli demo
@@ -19,7 +19,7 @@ dev-frontend:       ## React dev server on :5173 (proxies /api to :8000)
 
 test:               ## backend tests + frontend typecheck
 	cd backend && $(PY) -m pytest
-	cd frontend && npm run typecheck
+	if [ -f frontend/package.json ]; then cd frontend && npm run typecheck; fi
 
 lint:
 	cd backend && $(PY) -m ruff check app tests && $(PY) -m ruff format --check app tests

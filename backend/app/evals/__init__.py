@@ -93,6 +93,11 @@ def report(r: EvalResult, model: str, effort: str) -> str:
         f"Triage of the **SYNTHETIC** inbox ({r.total} emails) by `{model}` at effort `{effort}`, scored against "
         "the answer key on the verdicts the dashboard shows (after code-side rules, with no sender rules).",
         "",
+        "**Read this as a regression check, not as accuracy on real mail.** The triage policy and the "
+        "synthetic inbox were written together, and the policy describes several of the tricky cases "
+        "below almost directly. A score here shows the prompt, schema and code rules still behave as "
+        "designed; it doesn't predict how often a real inbox gets sorted correctly.",
+        "",
         f"Answered: {r.answered} of {r.total}. Attempt statuses: "
         + ", ".join(f"{k} {v}" for k, v in sorted(r.statuses.items()))
         + ".",

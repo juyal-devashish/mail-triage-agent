@@ -66,3 +66,18 @@ def test_no_stored_answers_means_nothing_hidden():
     msgs, key = generate()
     r = evaluate(msgs, key, ResponseCache(None), model="m", effort="low", max_tokens=100)
     assert r.answered == 0 and r.statuses == {"budget": 150} and r.hidden == []
+
+
+def test_stored_synthetic_answers_hold_their_floors():
+    """Regression floors on the committed Sonnet answers (app/synth/responses.jsonl). Don't lower these."""
+    from app.cli import SYNTH, SYNTH_RESPONSES
+
+    msgs, key = generate()
+    r = evaluate(
+        msgs, key, ResponseCache(SYNTH_RESPONSES), model=SYNTH.model, effort=SYNTH.effort, max_tokens=SYNTH.max_tokens
+    )
+    assert r.answered == 150
+    assert r.hidden == []
+    assert r.needs_recall == 1.0
+    assert r.noise_precision >= 0.95
+    assert r.accuracy >= 0.95

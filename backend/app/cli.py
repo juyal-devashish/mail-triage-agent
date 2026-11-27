@@ -34,7 +34,7 @@ class ModelParams:
     max_tokens: int
 
 
-SYNTH = ModelParams("claude-opus-5-5", "low", 4000)
+SYNTH = ModelParams("claude-sonnet-5-5", "low", 4000)
 
 
 def params_for(cfg: Settings) -> ModelParams:

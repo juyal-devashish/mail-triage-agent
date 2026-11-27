@@ -54,7 +54,7 @@ frontend/  React + Vite, TypeScript strict. Static mode reads exported JSON, no 
 
 ## Model calls
 
-- Model and settings come from config (`MTA_MODEL`, default `claude-opus-5-5`, effort `low`). Output is structured through `output_config.format`.
+- Model and settings come from config (`MTA_MODEL`, default `claude-sonnet-5-5`, effort `low`). Output is structured through `output_config.format`.
 - The email is trimmed first: plain text, quoted replies and signatures dropped, length capped.
 - Responses are cached on disk by request hash, so the same email is never paid for twice and tests run on stored responses.
 - Each run has a call cap. Every attempt is recorded, including refusals, truncations, invalid answers, API errors and budget skips.

@@ -1,20 +1,19 @@
 import json
 
-from app.evals import evaluate, report
+from app.evals import evaluate, report, synthetic_conversations
 from app.llm.triage_llm import ResponseCache, build_request, request_key
-from app.synth.inbox import generate
 
 
 def cache_from(answers_for):
-    """A cache holding a stored response for every synthetic email, built from a function of the truth."""
-    msgs, key = generate()
+    """A cache holding a stored response for every synthetic conversation, built from a function of the truth."""
+    convs, key = synthetic_conversations()
     cache = ResponseCache(None)
-    for m in msgs:
-        bucket, confidence = answers_for(m, key[m.id])
+    for c in convs:
+        bucket, confidence = answers_for(c, key[c.id])
         text = json.dumps(
             {
                 "bucket": bucket,
-                "category": key[m.id].category,
+                "category": key[c.id].category,
                 "summary": "s",
                 "reason": "r",
                 "action": None,
@@ -22,7 +21,7 @@ def cache_from(answers_for):
                 "confidence": confidence,
             }
         )
-        kw = build_request(m, [], "m", "low", 100)
+        kw = build_request(c, [], "m", "low", 100)
         cache.put(
             request_key(kw),
             {
@@ -36,12 +35,12 @@ def cache_from(answers_for):
                 },
             },
         )
-    return msgs, key, cache
+    return convs, key, cache
 
 
 def run(answers_for):
-    msgs, key, cache = cache_from(answers_for)
-    return evaluate(msgs, key, cache, model="m", effort="low", max_tokens=100)
+    convs, key, cache = cache_from(answers_for)
+    return evaluate(convs, key, cache, model="m", effort="low", max_tokens=100)
 
 
 def test_perfect_answers_score_perfectly():
@@ -63,8 +62,8 @@ def test_low_confidence_noise_is_scored_as_shown():
 
 
 def test_no_stored_answers_means_nothing_hidden():
-    msgs, key = generate()
-    r = evaluate(msgs, key, ResponseCache(None), model="m", effort="low", max_tokens=100)
+    convs, key = synthetic_conversations()
+    r = evaluate(convs, key, ResponseCache(None), model="m", effort="low", max_tokens=100)
     assert r.answered == 0 and r.statuses == {"budget": 150} and r.hidden == []
 
 
@@ -72,9 +71,9 @@ def test_stored_synthetic_answers_hold_their_floors():
     """Regression floors on the committed Sonnet answers (app/synth/responses.jsonl). Don't lower these."""
     from app.cli import SYNTH, SYNTH_RESPONSES
 
-    msgs, key = generate()
+    convs, key = synthetic_conversations()
     r = evaluate(
-        msgs, key, ResponseCache(SYNTH_RESPONSES), model=SYNTH.model, effort=SYNTH.effort, max_tokens=SYNTH.max_tokens
+        convs, key, ResponseCache(SYNTH_RESPONSES), model=SYNTH.model, effort=SYNTH.effort, max_tokens=SYNTH.max_tokens
     )
     assert r.answered == 150
     assert r.hidden == []

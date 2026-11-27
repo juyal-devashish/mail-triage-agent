@@ -46,6 +46,16 @@ class Draft:
     gmail_category: str = PERSONAL
     body_html: str | None = None
     note: str = ""
+    replies: tuple["Reply", ...] = ()
+
+
+@dataclass(frozen=True)
+class Reply:
+    """A later email in the same conversation: from the owner (`mine`) or from the original sender."""
+
+    mine: bool
+    body_text: str
+    hours_later: float
 
 
 def day(offset: int) -> str:
@@ -80,6 +90,8 @@ def _anchors() -> list[Draft]:
             f"changes) and leave comments by {day(3)}? Leadership sees it Friday morning.\n\nThanks!\nPriya",
             "needs_you",
             "deadline",
+            replies=(Reply(True, "On it. You'll have my comments by Wednesday night.", 3),),
+            note="you replied last, but the due date is close",
         ),
         Draft(
             "Marcus Bell",
@@ -138,8 +150,23 @@ def _anchors() -> list[Draft]:
             "dinner saturday?",
             "hey! a few of us are doing dumplings saturday at 7, the place on Hawthorne. you in? need a headcount "
             "by thursday for the booking",
-            "needs_you",
+            "fyi",
             "personal",
+            replies=(Reply(True, "I'm in! Count me plus one.", 2),),
+            note="you replied last and nothing is waiting on you",
+        ),
+        Draft(
+            "Elena Ruiz",
+            f"elena.ruiz@{WORK}",
+            "Henderson usage CSV",
+            "Hi Alex, could you send me the Henderson usage export as a CSV? I want to walk them through it.",
+            "needs_you",
+            "reply",
+            replies=(
+                Reply(True, "Sure, I'll pull it and send it tomorrow morning.", 1),
+                Reply(False, "Any update on the CSV? I need it for the 2pm call with Henderson today.", 20),
+            ),
+            note="a follow-up after you promised something",
         ),
         Draft(
             "Alder Dental",
@@ -419,7 +446,11 @@ FILLERS: list[tuple[Filler, int]] = [
 
 
 def generate(seed: int = 7, size: int = 150) -> tuple[list[Message], dict[str, Truth]]:
-    """The synthetic inbox (newest first) and its answer key. Same seed, same inbox."""
+    """The synthetic inbox and its answer key, keyed by conversation. Same seed, same inbox.
+
+    `size` is the number of conversations; a few have several emails, some of them the owner's own
+    replies (labelled SENT, not INBOX, as in Gmail). Messages come back newest first.
+    """
     rng = random.Random(seed)
     drafts = _anchors()
     fns, weights = zip(*FILLERS, strict=True)
@@ -427,27 +458,43 @@ def generate(seed: int = 7, size: int = 150) -> tuple[list[Message], dict[str, T
         drafts.append(rng.choices(fns, weights=weights)[0](rng))
     rng.shuffle(drafts)
 
-    # Spread arrival times over the past week, newest first. Newer mail is mostly unread, older mostly read.
+    # Spread conversations over the past week. Newer mail is mostly unread, older mostly read.
     offsets = sorted(rng.uniform(0.02, 7.0) for _ in drafts)
     messages: list[Message] = []
     key: dict[str, Truth] = {}
+    n = 0
     for i, (draft, age_days) in enumerate(zip(drafts, offsets, strict=True)):
-        mid = f"syn-{i + 1:04d}"
+        tid = f"thr-{i + 1:04d}"
+        span = sum(r.hours_later for r in draft.replies) / 24
+        start = NOW - timedelta(days=age_days + span)
         unread = draft.bucket == "needs_you" or rng.random() < (0.85 if i < 0.6 * size else 0.35)
-        labels = ("INBOX", draft.gmail_category) + (("UNREAD",) if unread else ())
-        messages.append(
-            Message(
-                id=mid,
-                thread_id=f"thr-{i + 1:04d}",
-                from_name=draft.from_name,
-                from_email=draft.from_email,
-                to=f"{USER_NAME} <{USER_EMAIL}>",
-                subject=draft.subject,
-                date=(NOW - timedelta(days=age_days)).isoformat(timespec="seconds"),
-                body_text=draft.body_text,
-                body_html=draft.body_html,
-                labels=labels,
+        emails: list[tuple[bool, str, datetime]] = [(False, draft.body_text, start)]
+        at = start
+        for r in draft.replies:
+            at = at + timedelta(hours=r.hours_later)
+            emails.append((r.mine, r.body_text, at))
+        for j, (mine, body, when) in enumerate(emails):
+            n += 1
+            last = j == len(emails) - 1
+            if mine:
+                labels: tuple[str, ...] = ("SENT",)
+            else:
+                read_already = any(e[0] for e in emails[j + 1 :])  # you replied after it, so you read it
+                labels = ("INBOX", draft.gmail_category) + (("UNREAD",) if unread and last and not read_already else ())
+            messages.append(
+                Message(
+                    id=f"syn-{n:04d}",
+                    thread_id=tid,
+                    from_name=USER_NAME if mine else draft.from_name,
+                    from_email=USER_EMAIL if mine else draft.from_email,
+                    to=f"{draft.from_name} <{draft.from_email}>" if mine else f"{USER_NAME} <{USER_EMAIL}>",
+                    subject=draft.subject if j == 0 else f"Re: {draft.subject}",
+                    date=when.isoformat(timespec="seconds"),
+                    body_text=body,
+                    body_html=draft.body_html if j == 0 else None,
+                    labels=labels,
+                )
             )
-        )
-        key[mid] = Truth(draft.bucket, draft.category, draft.note)
+        key[tid] = Truth(draft.bucket, draft.category, draft.note)
+    messages.sort(key=lambda m: (m.date, m.id), reverse=True)
     return messages, key

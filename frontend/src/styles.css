@@ -1085,3 +1085,64 @@ kbd {
     bottom: 16px;
   }
 }
+
+/* ------------------------------------------------------------------ conversation in the reader */
+.thread {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.thread-email {
+  border-bottom: 1px solid var(--rule);
+}
+.thread-head {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.thread-head:hover .thread-from {
+  text-decoration: underline;
+}
+.thread-from {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-from .muted {
+  font-weight: 400;
+}
+.thread-preview {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--graphite);
+}
+.thread-email.mine .thread-from::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--ink);
+}
+.thread-email .mail-body {
+  margin-top: 0;
+  padding: 0 0 18px;
+  border-top: 0;
+  min-height: 0;
+}
+.thread-email .mail-body iframe {
+  min-height: 280px;
+}

@@ -1,11 +1,11 @@
 // The dashboard talks to a Backend. In development and locally that is the FastAPI server; the
 // public demo swaps in a browser-only backend over the exported SYNTHETIC inbox (see staticBackend.ts).
 
-import type { Action, ActionResult, Bucket, Inbox, MessageDetail, RuleScope } from "./types";
+import type { Action, ActionResult, Bucket, Inbox, ConversationDetail, RuleScope } from "./types";
 
 export interface Backend {
   inbox(): Promise<Inbox>;
-  message(id: string): Promise<MessageDetail>;
+  conversation(id: string): Promise<ConversationDetail>;
   act(action: Action, ids: string[]): Promise<ActionResult>;
   undo(batchId?: string | null): Promise<ActionResult>;
   correct(id: string, bucket: Bucket, scope: RuleScope): Promise<{ touched: string[] }>;
@@ -26,11 +26,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const httpBackend: Backend = {
   inbox: () => call<Inbox>("/api/inbox"),
-  message: (id) => call<MessageDetail>(`/api/messages/${encodeURIComponent(id)}`),
+  conversation: (id) => call<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`),
   act: (action, ids) => call<ActionResult>("/api/actions", { method: "POST", body: JSON.stringify({ action, ids }) }),
   undo: (batchId) => call<ActionResult>("/api/undo", { method: "POST", body: JSON.stringify({ batch_id: batchId ?? null }) }),
   correct: (id, bucket, scope) =>
-    call<{ touched: string[] }>(`/api/messages/${encodeURIComponent(id)}/correct`, {
+    call<{ touched: string[] }>(`/api/conversations/${encodeURIComponent(id)}/correct`, {
       method: "POST",
       body: JSON.stringify({ bucket, scope }),
     }),

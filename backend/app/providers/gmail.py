@@ -1,7 +1,7 @@
 """
 Your Gmail inbox as a provider. Runs locally with your own OAuth client; nothing here is hosted.
 
-Scope is `gmail.modify`: read messages and change labels. The app only ever removes or re-adds the
+Scope is `gmail.modify`: read threads and change labels. The app only ever removes or re-adds the
 INBOX and UNREAD labels; it never deletes, trashes or sends. The OAuth client secret and token live
 in ~/.config/mail-triage-agent/ (outside the repo), and the token file is written owner-only.
 
@@ -121,11 +121,12 @@ class GmailProvider:
     name = "gmail"
     authoritative = True  # Gmail is the source of truth for labels; a sync overwrites the local mirror
 
-    def __init__(self, config_dir: Path, days: int = 7, max_messages: int = 300, service: Any = None) -> None:
+    def __init__(self, config_dir: Path, days: int = 7, max_threads: int = 300, service: Any = None) -> None:
         self.config_dir = config_dir
         self.days = days
-        self.max_messages = max_messages
+        self.max_threads = max_threads
         self._service = service
+        self._me: str | None = None
 
     @property
     def service(self) -> Any:
@@ -135,23 +136,32 @@ class GmailProvider:
             self._service = build("gmail", "v1", credentials=_credentials(self.config_dir), cache_discovery=False)
         return self._service
 
+    @property
+    def me(self) -> str:
+        if self._me is None:
+            self._me = self.service.users().getProfile(userId="me").execute()["emailAddress"].lower()
+        return self._me
+
     def fetch(self) -> list[Message]:
-        """Inbox messages from the last `days` days, newest first, at most `max_messages`."""
+        """Every email of the inbox conversations active in the last `days` days, at most `max_threads` of them.
+
+        Whole threads come back, the owner's sent replies included, so the app can see who wrote last.
+        """
         users = self.service.users()
         ids: list[str] = []
         page = None
-        while len(ids) < self.max_messages:
+        while len(ids) < self.max_threads:
             resp = (
-                users.messages()
+                users.threads()
                 .list(
                     userId="me",
                     q=f"in:inbox newer_than:{self.days}d",
                     pageToken=page,
-                    maxResults=min(500, self.max_messages - len(ids)),
+                    maxResults=min(500, self.max_threads - len(ids)),
                 )
                 .execute()
             )
-            ids += [m["id"] for m in resp.get("messages", [])]
+            ids += [t["id"] for t in resp.get("threads", [])]
             page = resp.get("nextPageToken")
             if not page:
                 break
@@ -159,28 +169,33 @@ class GmailProvider:
 
         def collect(request_id: str, response: dict[str, Any], exception: Exception | None) -> None:
             if exception is not None:
-                log.warning("Gmail get failed for %s: %s", request_id, type(exception).__name__)
+                log.warning("Gmail thread get failed for %s: %s", request_id, type(exception).__name__)
             else:
                 raws[request_id] = response
 
         for start in range(0, len(ids), 50):
             batch = self.service.new_batch_http_request(callback=collect)
-            for mid in ids[start : start + 50]:
-                batch.add(users.messages().get(userId="me", id=mid, format="full"), request_id=mid)
+            for tid in ids[start : start + 50]:
+                batch.add(users.threads().get(userId="me", id=tid, format="full"), request_id=tid)
             batch.execute()
         # Batched gets can fail one by one (rate limits). Retry those singly; if any still fail, stop the
         # sync rather than return a partial inbox, which would make the missing mail look archived.
-        missing = [mid for mid in ids if mid not in raws]
-        for attempt, mid in enumerate(missing):
+        missing = [tid for tid in ids if tid not in raws]
+        for attempt, tid in enumerate(missing):
             time.sleep(min(2.0, 0.2 * (attempt + 1)))
             try:
-                raws[mid] = users.messages().get(userId="me", id=mid, format="full").execute()
+                raws[tid] = users.threads().get(userId="me", id=tid, format="full").execute()
             except Exception as exc:  # noqa: BLE001 - any failure means the snapshot is incomplete
-                log.warning("Gmail get failed again for %s: %s", mid, type(exc).__name__)
-        still = [mid for mid in ids if mid not in raws]
+                log.warning("Gmail thread get failed again for %s: %s", tid, type(exc).__name__)
+        still = [tid for tid in ids if tid not in raws]
         if still:
-            raise GmailSetupError(f"Couldn't fetch {len(still)} of {len(ids)} inbox messages; try again shortly.")
-        messages = [parse_message(raws[mid]) for mid in ids]
+            raise GmailSetupError(f"Couldn't fetch {len(still)} of {len(ids)} inbox conversations; try again shortly.")
+        messages = [
+            parse_message(raw)
+            for tid in ids
+            for raw in raws[tid].get("messages", [])
+            if "DRAFT" not in raw.get("labelIds", [])  # unsent drafts aren't part of the conversation yet
+        ]
         return sorted(messages, key=lambda m: m.date, reverse=True)
 
     def modify(self, ids: list[str], add: list[str], remove: list[str]) -> None:

@@ -17,8 +17,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import BACKEND, Settings, settings
-from app.llm.triage_llm import PROMPT_VERSION, ResponseCache, anthropic_transport, estimate_cost, write_run_log
-from app.pipeline import run_triage, sync
+from app.domain.types import Conversation
+from app.llm.triage_llm import ResponseCache, anthropic_transport, estimate_cost, write_run_log
+from app.pipeline import is_current, run_triage, sync
 from app.providers import MailProvider
 from app.store import Store
 
@@ -45,7 +46,7 @@ def provider_for(cfg: Settings) -> MailProvider:
     if cfg.provider == "gmail":
         from app.providers.gmail import GmailProvider
 
-        return GmailProvider(cfg.gmail_dir, days=cfg.gmail_days, max_messages=cfg.gmail_max_messages)
+        return GmailProvider(cfg.gmail_dir, days=cfg.gmail_days, max_threads=cfg.gmail_max_threads)
     from app.providers.synthetic import SyntheticProvider
 
     return SyntheticProvider()
@@ -67,16 +68,16 @@ def cmd_demo(cfg: Settings, _: argparse.Namespace) -> int:
     )
     counts = result.summary.counts()
     print(
-        f"synthetic inbox: {result.synced} messages, stored answers for {counts.get('ok', 0)}, "
+        f"synthetic inbox: {result.synced} conversations, stored answers for {counts.get('ok', 0)}, "
         f"{counts.get('budget', 0)} without one (shown as 'not triaged yet')"
     )
     print(f"database: {cfg.database}")
     return 0
 
 
-def _todo(store: Store, force: bool) -> list:
-    answered = store.answer_versions()
-    return [m for m in store.messages() if "INBOX" in m.labels and (force or answered.get(m.id) != PROMPT_VERSION)]
+def _todo(store: Store, force: bool) -> list[Conversation]:
+    answers = store.stored_answers()
+    return [c for c in store.conversations() if c.in_inbox and (force or not is_current(answers.get(c.id), c))]
 
 
 def cmd_estimate(cfg: Settings, args: argparse.Namespace) -> int:
@@ -130,12 +131,11 @@ def cmd_triage(cfg: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_eval(cfg: Settings, args: argparse.Namespace) -> int:
-    from app.evals import evaluate, report
-    from app.synth.inbox import generate
+    from app.evals import evaluate, report, synthetic_conversations
 
-    messages, key = generate()
+    conversations, key = synthetic_conversations()
     result = evaluate(
-        messages,
+        conversations,
         key,
         ResponseCache(SYNTH_RESPONSES),
         model=SYNTH.model,
@@ -168,7 +168,7 @@ def cmd_export_static(cfg: Settings, _: argparse.Namespace) -> int:
     import shutil
 
     from app.providers.synthetic import SyntheticProvider
-    from app.views import inbox_view, message_view
+    from app.views import conversation_view, inbox_view
 
     store = Store(":memory:")
     provider = SyntheticProvider()  # always synthetic, whatever MTA_PROVIDER says
@@ -192,14 +192,14 @@ def cmd_export_static(cfg: Settings, _: argparse.Namespace) -> int:
         return 1
     out = BACKEND.parent / "frontend" / "static-demo" / "demo"
     shutil.rmtree(out, ignore_errors=True)
-    (out / "messages").mkdir(parents=True)
+    (out / "conversations").mkdir(parents=True)
     inbox = inbox_view(store, provider.name)
     assert inbox["synthetic"] is True
     (out / "inbox.json").write_text(json.dumps(inbox, indent=1), encoding="utf-8")
-    for m in store.messages():
-        view = message_view(store, provider.name, m.id)
-        (out / "messages" / f"{m.id}.json").write_text(json.dumps(view), encoding="utf-8")
-    print(f"wrote {out} ({inbox['counts']['inbox']} synthetic messages)")
+    for c in store.conversations():
+        view = conversation_view(store, provider.name, c.id)
+        (out / "conversations" / f"{c.id}.json").write_text(json.dumps(view), encoding="utf-8")
+    print(f"wrote {out} ({inbox['counts']['inbox']} synthetic conversations)")
     return 0
 
 
@@ -209,11 +209,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("demo", help="rebuild the synthetic database from stored responses (no API calls)")
     p = sub.add_parser("estimate", help="rough cost of triaging what has no answer yet")
-    p.add_argument("--force", action="store_true", help="count every inbox message, answered or not")
+    p.add_argument("--force", action="store_true", help="count every inbox conversation, answered or not")
     p = sub.add_parser("triage", help="triage what has no answer yet")
     p.add_argument("--live", action="store_true", help="allow real API calls (otherwise cache only)")
     p.add_argument("--max-calls", type=int, help="cap on live calls this run (default MTA_MAX_CALLS)")
-    p.add_argument("--force", action="store_true", help="re-ask messages that already have an answer")
+    p.add_argument("--force", action="store_true", help="re-ask conversations that already have a current answer")
     p = sub.add_parser("eval", help="score stored answers for the synthetic inbox against its answer key")
     p.add_argument("--write", action="store_true", help="also write docs/results.md")
     sub.add_parser("gmail-login", help="sign in to Gmail once (browser consent)")

@@ -34,8 +34,8 @@ class Settings(BaseSettings):
 
     # Gmail
     gmail_dir: Path = Path.home() / ".config" / "mail-triage-agent"
-    gmail_days: int = 7
-    gmail_max_messages: int = 300
+    gmail_days: int = 14  # docs/plan-gmail.md: the first sync covers two weeks
+    gmail_max_threads: int = 300
 
 
 def settings() -> Settings:

@@ -1,5 +1,6 @@
 import pytest
 
+from app.pipeline import sync
 from app.providers.synthetic import SyntheticProvider
 from app.store import Store
 
@@ -21,5 +22,6 @@ def provider() -> SyntheticProvider:
 @pytest.fixture
 def store(provider: SyntheticProvider) -> Store:
     s = Store(":memory:", now=Clock())
-    s.upsert_messages(provider.fetch())
+    sync(s, provider)
+    provider.calls.clear()
     return s

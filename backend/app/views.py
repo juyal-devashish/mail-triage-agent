@@ -1,5 +1,5 @@
 """
-Read models for the dashboard: the inbox grouped for review, and one message rendered safely.
+Read models for the dashboard: inbox conversations grouped for review, and one conversation rendered safely.
 
 The same functions feed the API and the static demo export, so the demo can't show anything the
 app wouldn't.
@@ -11,7 +11,7 @@ from typing import Any
 
 import nh3
 
-from app.domain.types import Category, Message
+from app.domain.types import Category, Conversation
 from app.domain.verdict import Verdict
 from app.store import Store
 
@@ -48,18 +48,22 @@ def sanitize_html(html: str) -> str:
     )
 
 
-def gmail_url(provider: str, message: Message) -> str | None:
-    return f"https://mail.google.com/mail/u/0/#all/{message.id}" if provider == "gmail" else None
+def gmail_url(provider: str, conversation: Conversation) -> str | None:
+    return f"https://mail.google.com/mail/u/0/#all/{conversation.id}" if provider == "gmail" else None
 
 
-def item(provider: str, m: Message, v: Verdict) -> dict[str, Any]:
+def item(provider: str, c: Conversation, v: Verdict) -> dict[str, Any]:
+    who = c.counterpart
     return {
-        "id": m.id,
-        "from_name": m.from_name,
-        "from_email": m.from_email,
-        "subject": m.subject,
-        "date": m.date,
-        "unread": "UNREAD" in m.labels,
+        "id": c.id,
+        "from_name": who.from_name,
+        "from_email": who.from_email,
+        "participants": list(c.participants),
+        "count": len(c.messages),
+        "replied_last": c.replied_last,
+        "subject": c.subject,
+        "date": c.date,
+        "unread": c.unread,
         "bucket": v.bucket,
         "category": v.category,
         "summary": v.summary,
@@ -68,7 +72,7 @@ def item(provider: str, m: Message, v: Verdict) -> dict[str, Any]:
         "deadline": v.deadline,
         "confidence": v.confidence,
         "source": v.source,
-        "gmail_url": gmail_url(provider, m),
+        "gmail_url": gmail_url(provider, c),
     }
 
 
@@ -83,9 +87,9 @@ def as_of(provider: str) -> str:
 
 def inbox_view(store: Store, provider: str) -> dict[str, Any]:
     verdicts = store.verdicts()
-    rows = [(m, verdicts[m.id]) for m in store.messages() if "INBOX" in m.labels and m.id in verdicts]
+    rows = [(c, verdicts[c.id]) for c in store.conversations() if c.in_inbox and c.id in verdicts]
     needs = [item(provider, m, v) for m, v in rows if v.bucket == "needs_you"]
-    # Due soonest first; undated after, newest first (messages() is already newest first, and sort is stable).
+    # Due soonest first; undated after, newest first (conversations() is already newest first, and sort is stable).
     needs.sort(key=lambda x: (x["deadline"] is None, x["deadline"] or ""))
     fyi = [item(provider, m, v) for m, v in rows if v.bucket == "fyi"]
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -109,14 +113,25 @@ def inbox_view(store: Store, provider: str) -> dict[str, Any]:
     }
 
 
-def message_view(store: Store, provider: str, message_id: str) -> dict[str, Any] | None:
-    m = store.message(message_id)
-    v = store.verdicts().get(message_id)
-    if m is None or v is None:
+def conversation_view(store: Store, provider: str, conversation_id: str) -> dict[str, Any] | None:
+    c = store.conversation(conversation_id)
+    v = store.verdicts().get(conversation_id)
+    if c is None or v is None:
         return None
     return {
-        **item(provider, m, v),
-        "to": m.to,
-        "body_text": m.body_text,
-        "body_html": sanitize_html(m.body_html) if m.body_html else None,
+        **item(provider, c, v),
+        "messages": [
+            {
+                "id": m.id,
+                "from_name": m.from_name,
+                "from_email": m.from_email,
+                "to": m.to,
+                "date": m.date,
+                "mine": c.is_mine(m),
+                "unread": "UNREAD" in m.labels,
+                "body_text": m.body_text,
+                "body_html": sanitize_html(m.body_html) if m.body_html else None,
+            }
+            for m in c.messages
+        ],
     }

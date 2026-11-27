@@ -8,7 +8,9 @@ Most email needs no attention, but you still have to open it to find that out. I
 
 Wrong call? Move the email and the app turns that into a rule for the sender.
 
-It runs locally against your Gmail (archive and mark read only, never delete or send). A public demo runs on a **synthetic** inbox.
+It runs locally against your Gmail (archive and mark read only, never delete or send).
+
+**Live demo:** <https://juyal-devashish.github.io/mail-triage-agent/>, on a **synthetic** inbox for a fictional person. Archive, undo and corrections work in your browser and reset on reload.
 
 See [docs/design.md](docs/design.md) for the design, [docs/gmail.md](docs/gmail.md) to connect your own inbox, and `docs/results.md` (written by `eval --write` once the synthetic inbox has stored model answers) for how the triage scores against the synthetic answer key.
 

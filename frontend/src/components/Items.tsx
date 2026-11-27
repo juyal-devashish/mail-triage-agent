@@ -1,6 +1,7 @@
 import { dueLabel, urgency, when } from "../format";
 import type { Bucket, Item, NoiseGroup, RuleScope } from "../types";
 import { MoveMenu } from "./MoveMenu";
+import { Chevron } from "./Pixels";
 
 export interface ItemHandlers {
   onOpen: (id: string) => void;
@@ -12,65 +13,69 @@ export interface ItemHandlers {
 
 const SOURCE_NOTE: Record<Item["source"], string | null> = {
   model: null,
-  rule: "your rule",
-  correction: "you moved this",
-  fallback: "not triaged",
+  rule: "Your rule",
+  correction: "Moved by you",
+  fallback: "Not triaged",
 };
-
-function Sender({ item }: { item: Item }) {
-  return (
-    <span className="sender" title={item.from_email}>
-      {item.unread && <span className="unread-dot" aria-label="unread" />}
-      {item.from_name || item.from_email}
-    </span>
-  );
-}
 
 function SourceTag({ item }: { item: Item }) {
   const note = SOURCE_NOTE[item.source];
   if (note) return <span className={`tag tag-${item.source}`}>{note}</span>;
-  if (item.confidence === "low") return <span className="tag tag-unsure">unsure</span>;
+  if (item.confidence === "low") return <span className="tag tag-unsure">Unsure</span>;
   return null;
 }
 
-interface CardProps extends ItemHandlers {
+function Unread({ item }: { item: Item }) {
+  return item.unread ? <span className="unread-px" aria-label="Unread" /> : null;
+}
+
+interface NeedsProps extends ItemHandlers {
   item: Item;
   now: Date;
   focused: boolean;
   open: boolean;
 }
 
-/** A needs-you card: what it says, why it's here, what to do, and when. */
-export function NeedsCard({ item, now, focused, open, ...h }: CardProps) {
+/** One needs-you row: a heat block with the due date, then what it says, why, and the next step. */
+export function NeedsRow({ item, now, focused, open, ...h }: NeedsProps) {
   const u = urgency(item.deadline, now);
   const key = `msg:${item.id}`;
   return (
     <article
-      className={`card urgency-${u}${focused ? " focused" : ""}${open ? " is-open" : ""}`}
+      className={`need${focused ? " focused" : ""}${open ? " is-open" : ""}`}
       data-key={key}
       onClick={() => {
         h.onFocus(key);
         h.onOpen(item.id);
       }}
     >
-      <header className="card-meta">
-        <Sender item={item} />
-        <span className="dot-sep">·</span>
-        <time dateTime={item.date}>{when(item.date, now)}</time>
-        <SourceTag item={item} />
-        {item.deadline && <span className={`due due-${u}`}>{dueLabel(item.deadline, now)}</span>}
-      </header>
-      <p className="card-summary">{item.summary}</p>
-      <p className="card-reason">{item.reason}</p>
-      <footer className="card-foot">
-        {item.action ? <span className="next-step">→ {item.action}</span> : <span />}
-        <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="btn" onClick={() => h.onArchive([item.id], "1 email")} title="Done: archive (e)">
-            Done
-          </button>
-          <MoveMenu item={item} onMove={(b, s) => h.onMove(item, b, s)} />
+      <div className={`heat heat-${u}`}>{item.deadline ? dueLabel(item.deadline, now) : "No date"}</div>
+      <div className="need-body">
+        <div className="need-meta">
+          <Unread item={item} />
+          <span className="sender" title={item.from_email}>
+            {item.from_name || item.from_email}
+          </span>
+          <SourceTag item={item} />
+          <time className="when" dateTime={item.date}>
+            {when(item.date, now)}
+          </time>
         </div>
-      </footer>
+        <p className="need-summary">{item.summary}</p>
+        <p className="need-reason">{item.reason}</p>
+        {item.action && (
+          <p className="next-step">
+            <Chevron size={9} />
+            {item.action}
+          </p>
+        )}
+      </div>
+      <div className="need-actions" onClick={(e) => e.stopPropagation()}>
+        <button className="btn" onClick={() => h.onArchive([item.id], "1 email")} title="Done: archive it (e)">
+          Done
+        </button>
+        <MoveMenu item={item} onMove={(b, s) => h.onMove(item, b, s)} />
+      </div>
     </article>
   );
 }
@@ -95,19 +100,22 @@ export function Row({ item, now, focused, open, showReason, ...h }: RowProps) {
         h.onOpen(item.id);
       }}
     >
-      <Sender item={item} />
+      <span className="row-sender" title={item.from_email}>
+        <Unread item={item} />
+        <span className="sender">{item.from_name || item.from_email}</span>
+      </span>
       <span className="row-text">
         <span className="row-summary">{item.summary}</span>
         {showReason && <span className="row-reason">{item.reason}</span>}
       </span>
       <SourceTag item={item} />
-      <time className="row-time" dateTime={item.date}>
+      <time className="when" dateTime={item.date}>
         {when(item.date, now)}
       </time>
       <span className="row-actions" onClick={(e) => e.stopPropagation()}>
         {item.unread && (
           <button className="btn ghost" onClick={() => h.onMarkRead([item.id], "1 email")} title="Mark read (m)">
-            Read
+            Mark read
           </button>
         )}
         <button className="btn ghost" onClick={() => h.onArchive([item.id], "1 email")} title="Archive (e)">
@@ -128,7 +136,7 @@ interface GroupProps extends ItemHandlers {
   onToggle: () => void;
 }
 
-/** A collapsed digest: "Promotions · 35 from Gearloft, Cartwheel and 3 more", with Archive all. */
+/** A folded digest: "Promotions 35, from Gearloft, Cartwheel and 3 more", with Archive all. */
 export function Digest({ group, now, expanded, focusKey, openId, onToggle, ...h }: GroupProps) {
   const key = `group:${group.category}`;
   const senders = [...new Set(group.items.map((i) => i.from_name || i.from_email))];
@@ -149,25 +157,24 @@ export function Digest({ group, now, expanded, focusKey, openId, onToggle, ...h 
         role="button"
         aria-expanded={expanded}
       >
-        <span className="chevron" aria-hidden>
-          ›
+        <span className="digest-toggle" aria-hidden>
+          <Chevron size={9} />
         </span>
-        <span className="digest-title">
-          {group.label} <span className="count">{group.items.length}</span>
-        </span>
+        <span className="digest-title">{group.label}</span>
+        <span className="digest-count">{group.items.length}</span>
         <span className="digest-senders">
-          {shown}
+          From {shown}
           {more}
-          {unread > 0 && <span className="digest-unread"> · {unread} unread</span>}
+          {unread > 0 && <span className="digest-unread">, {unread} unread</span>}
         </span>
-        <span className="row-actions always" onClick={(e) => e.stopPropagation()}>
-          <button className="btn" onClick={() => h.onArchive(ids, label)} title="Archive all in this digest (e)">
+        <span className="digest-actions" onClick={(e) => e.stopPropagation()}>
+          <button className="btn" onClick={() => h.onArchive(ids, label)} title="Archive every email in this digest (e)">
             Archive all
           </button>
         </span>
       </div>
       {expanded && (
-        <ul className="rows">
+        <ul className="rows digest-rows">
           {group.items.map((item) => (
             <Row
               key={item.id}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Backend } from "./api";
-import { Digest, NeedsCard, Row, type ItemHandlers } from "./components/Items";
+import { Digest, NeedsRow, Row, type ItemHandlers } from "./components/Items";
+import { Chevron, InboxPixels, Mark } from "./components/Pixels";
 import { Reader } from "./components/Reader";
 import { plural } from "./format";
 import { BUCKET_LABEL, type Bucket, type Inbox, type Item, type RuleScope } from "./types";
@@ -13,14 +14,14 @@ interface Toast {
 type Target = { key: string; kind: "msg"; item: Item } | { key: string; kind: "group"; category: string; items: Item[] };
 
 const KEYS: [string, string][] = [
-  ["j / k", "next / previous"],
-  ["o or Enter", "open, or expand a digest"],
-  ["e", "archive (a whole digest on its header)"],
-  ["m", "mark read"],
-  ["1 2 3", "move to Needs you / Worth knowing / Noise"],
-  ["z", "undo"],
-  ["Esc", "close"],
-  ["?", "this help"],
+  ["j  k", "Next or previous email"],
+  ["o", "Open an email, or unfold a digest"],
+  ["e", "Archive (a whole digest from its header)"],
+  ["m", "Mark read"],
+  ["1  2  3", "Move to Needs you, Worth knowing or Noise"],
+  ["z", "Undo the last archive or mark read"],
+  ["Esc", "Close the email"],
+  ["?", "Show these shortcuts"],
 ];
 
 export function App({ backend }: { backend: Backend }) {
@@ -125,7 +126,7 @@ export function App({ backend }: { backend: Backend }) {
   const undo = useCallback(() => {
     void run(async () => {
       const r = await backend.undo(toast?.batchId ?? null);
-      return r.batch_id ? { text: `Undone: ${plural(r.changed.length, "email")} restored`, batchId: null } : { text: "Nothing to undo", batchId: null };
+      return r.batch_id ? { text: `Restored ${plural(r.changed.length, "email")}`, batchId: null } : { text: "Nothing to undo", batchId: null };
     });
   }, [backend, run, toast]);
 
@@ -208,7 +209,7 @@ export function App({ backend }: { backend: Backend }) {
         <h1>Can't reach the triage server</h1>
         <p className="muted">{error}</p>
         <p className="muted">
-          Start it with <code>make dev-backend</code>, then reload.
+          Start it with <code>make dev-backend</code>, then reload this page.
         </p>
       </main>
     );
@@ -220,138 +221,165 @@ export function App({ backend }: { backend: Backend }) {
   const today = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   const allNoise = inbox.noise.flatMap((g) => g.items.map((i) => i.id));
   const unreadFyi = inbox.fyi.filter((i) => i.unread).map((i) => i.id);
+  const headline =
+    c.needs_you === 0 ? "Nothing needs you right now." : `${plural(c.needs_you, "email")} ${c.needs_you === 1 ? "needs" : "need"} you.`;
 
   return (
     <div className={`app${openId ? " reading" : ""}`}>
-      {inbox.synthetic && (
-        <div className="banner">
-          <strong>Demo</strong> · a SYNTHETIC inbox for a fictional person. Every sender and email here is made up.
+      <header className="topbar">
+        <div className="cell brand">
+          <Mark />
+          <span>Inbox triage</span>
         </div>
-      )}
+        <div className="cell date">{today}</div>
+        {inbox.synthetic && (
+          <div className="cell demo" title="Every sender and email in this demo is made up.">
+            Demo inbox, synthetic data
+          </div>
+        )}
+        <div className="spacer" />
+        <button className="cell cell-btn" onClick={() => setHelp(true)}>
+          Shortcuts <kbd>?</kbd>
+        </button>
+        {allNoise.length > 0 && (
+          <button className="cell cell-primary" onClick={() => handlers.onArchive(allNoise, plural(allNoise.length, "noise email"))}>
+            Archive all noise <Chevron />
+          </button>
+        )}
+      </header>
+
       <div className="layout">
         <main className="review">
-          <header className="hero">
-            <p className="eyebrow">{today}</p>
-            <h1>
-              {c.needs_you === 0 ? (
-                "Nothing needs you right now."
-              ) : (
-                <>
-                  <span className="hl">{plural(c.needs_you, "email")}</span> {c.needs_you === 1 ? "needs" : "need"} you.
-                </>
-              )}
-            </h1>
-            <p className="lede">
-              {c.fyi} {c.fyi === 1 ? "is" : "are"} worth a glance, and {c.noise} {c.noise === 1 ? "is" : "are"} noise, folded into{" "}
-              {plural(inbox.noise.length, "digest")}. {c.inbox > 0 && `That's ${Math.round((c.noise / total) * 100)}% of your inbox you can skip.`}
-            </p>
-            <div className="mix" aria-hidden>
-              <span className="mix-needs_you" style={{ flexGrow: c.needs_you }} />
-              <span className="mix-fyi" style={{ flexGrow: c.fyi }} />
-              <span className="mix-noise" style={{ flexGrow: c.noise }} />
-            </div>
-          </header>
-
-          <section className="section" aria-labelledby="h-needs">
-            <div className="section-head">
-              <h2 id="h-needs">
-                <span className="swatch swatch-needs_you" /> Needs you <span className="count">{c.needs_you}</span>
-              </h2>
-            </div>
-            {inbox.needs_you.length === 0 ? (
-              <p className="muted pad">You're clear. Nothing is waiting on you.</p>
-            ) : (
-              <div className="cards">
-                {inbox.needs_you.map((item) => (
-                  <NeedsCard key={item.id} item={item} now={now} focused={focusKey === `msg:${item.id}`} open={openId === item.id} {...handlers} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="section" aria-labelledby="h-fyi">
-            <div className="section-head">
-              <h2 id="h-fyi">
-                <span className="swatch swatch-fyi" /> Worth knowing <span className="count">{c.fyi}</span>
-              </h2>
-              {unreadFyi.length > 0 && (
-                <button className="btn ghost" onClick={() => handlers.onMarkRead(unreadFyi, plural(unreadFyi.length, "email"))}>
-                  Mark all read
-                </button>
-              )}
-            </div>
-            {inbox.fyi.length === 0 ? (
-              <p className="muted pad">Nothing here.</p>
-            ) : (
-              <ul className="rows panel">
-                {inbox.fyi.map((item) => (
-                  <Row key={item.id} item={item} now={now} focused={focusKey === `msg:${item.id}`} open={openId === item.id} {...handlers} />
-                ))}
+          <section className="band hero">
+            <div className="col">
+              <h1>{headline}</h1>
+              <p className="lede">
+                {c.fyi} {c.fyi === 1 ? "is" : "are"} worth a glance and {c.noise} {c.noise === 1 ? "is" : "are"} noise, folded into{" "}
+                {plural(inbox.noise.length, "digest")}.{" "}
+                {c.inbox > 0 && `You can skip ${Math.round((c.noise / total) * 100)}% of this inbox.`}
+              </p>
+              <InboxPixels inbox={inbox} onOpen={setOpenId} />
+              <ul className="legend">
+                <li>
+                  <span className="px px-needs_you" /> Needs you
+                </li>
+                <li>
+                  <span className="px px-fyi" /> Worth knowing
+                </li>
+                <li>
+                  <span className="px px-noise" /> Noise
+                </li>
+                <li className="legend-note">One square per email. Click one to open it.</li>
               </ul>
-            )}
+            </div>
           </section>
 
-          <section className="section" aria-labelledby="h-noise">
-            <div className="section-head">
-              <h2 id="h-noise">
-                <span className="swatch swatch-noise" /> Noise <span className="count">{c.noise}</span>
-              </h2>
-              {allNoise.length > 0 && (
-                <button className="btn" onClick={() => handlers.onArchive(allNoise, `all ${plural(allNoise.length, "noise email")}`)}>
-                  Archive all noise
-                </button>
+          <section className="band" aria-labelledby="h-needs">
+            <div className="col">
+              <div className="section-head">
+                <h2 id="h-needs">Needs you</h2>
+                <span className="count">{c.needs_you}</span>
+              </div>
+              {inbox.needs_you.length === 0 ? (
+                <p className="empty">You're clear. Nothing is waiting on you.</p>
+              ) : (
+                <div className="frame needs">
+                  {inbox.needs_you.map((item) => (
+                    <NeedsRow key={item.id} item={item} now={now} focused={focusKey === `msg:${item.id}`} open={openId === item.id} {...handlers} />
+                  ))}
+                </div>
               )}
             </div>
-            {inbox.noise.length === 0 ? (
-              <p className="muted pad">No noise. Enjoy it.</p>
-            ) : (
-              <div className="panel">
-                {inbox.noise.map((g) => (
-                  <Digest
-                    key={g.category}
-                    group={g}
-                    now={now}
-                    expanded={expanded.has(g.category)}
-                    focusKey={focusKey}
-                    openId={openId}
-                    onToggle={() =>
-                      setExpanded((s) => {
-                        const n = new Set(s);
-                        if (n.has(g.category)) n.delete(g.category);
-                        else n.add(g.category);
-                        return n;
-                      })
-                    }
-                    {...handlers}
-                  />
-                ))}
+          </section>
+
+          <section className="band" aria-labelledby="h-fyi">
+            <div className="col">
+              <div className="section-head">
+                <h2 id="h-fyi">Worth knowing</h2>
+                <span className="count">{c.fyi}</span>
+                {unreadFyi.length > 0 && (
+                  <button className="btn ghost push" onClick={() => handlers.onMarkRead(unreadFyi, plural(unreadFyi.length, "email"))}>
+                    Mark all read
+                  </button>
+                )}
               </div>
-            )}
+              {inbox.fyi.length === 0 ? (
+                <p className="empty">Nothing to glance at.</p>
+              ) : (
+                <ul className="frame rows">
+                  {inbox.fyi.map((item) => (
+                    <Row key={item.id} item={item} now={now} focused={focusKey === `msg:${item.id}`} open={openId === item.id} {...handlers} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          <section className="band" aria-labelledby="h-noise">
+            <div className="col">
+              <div className="section-head">
+                <h2 id="h-noise">Noise</h2>
+                <span className="count">{c.noise}</span>
+              </div>
+              {inbox.noise.length === 0 ? (
+                <p className="empty">No noise left. Your inbox is just the mail that matters.</p>
+              ) : (
+                <div className="frame">
+                  {inbox.noise.map((g) => (
+                    <Digest
+                      key={g.category}
+                      group={g}
+                      now={now}
+                      expanded={expanded.has(g.category)}
+                      focusKey={focusKey}
+                      openId={openId}
+                      onToggle={() =>
+                        setExpanded((s) => {
+                          const n = new Set(s);
+                          if (n.has(g.category)) n.delete(g.category);
+                          else n.add(g.category);
+                          return n;
+                        })
+                      }
+                      {...handlers}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
           {inbox.rules.length > 0 && (
-            <section className="section rules" aria-labelledby="h-rules">
-              <h2 id="h-rules" className="small-head">
-                Your sender rules
-              </h2>
-              <ul>
-                {inbox.rules.map((r) => (
-                  <li key={r.pattern}>
-                    <code>{r.pattern}</code> → {BUCKET_LABEL[r.bucket]}
-                    <button
-                      className="btn ghost tiny"
-                      onClick={() => void run(async () => (await backend.deleteRule(r.pattern), { text: `Rule for ${r.pattern} removed`, batchId: null }))}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            <section className="band" aria-labelledby="h-rules">
+              <div className="col">
+                <div className="section-head">
+                  <h2 id="h-rules">Your sender rules</h2>
+                  <span className="count">{inbox.rules.length}</span>
+                </div>
+                <ul className="frame rules">
+                  {inbox.rules.map((r) => (
+                    <li key={r.pattern}>
+                      <span className={`px px-${r.bucket}`} />
+                      <span className="rule-text">
+                        Mail from <strong>{r.pattern}</strong> goes to {BUCKET_LABEL[r.bucket]}
+                      </span>
+                      <button
+                        className="btn ghost"
+                        onClick={() => void run(async () => (await backend.deleteRule(r.pattern), { text: `Removed the rule for ${r.pattern}`, batchId: null }))}
+                      >
+                        Remove rule
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </section>
           )}
 
-          <footer className="foot muted small">
-            Press <kbd>?</kbd> for keyboard shortcuts. Claude sorts each email; nothing is archived until you click.
+          <footer className="band foot">
+            <div className="col">
+              Claude sorts each email. Nothing is archived until you choose to. Press <kbd>?</kbd> for keyboard shortcuts.
+            </div>
           </footer>
         </main>
 
@@ -372,11 +400,11 @@ export function App({ backend }: { backend: Backend }) {
         <div className="toast" role="status">
           <span>{toast.text}</span>
           {toast.batchId && (
-            <button className="btn ghost" onClick={undo}>
+            <button className="btn toast-btn" onClick={undo}>
               Undo <kbd>z</kbd>
             </button>
           )}
-          <button className="btn ghost tiny" aria-label="Dismiss" onClick={() => setToast(null)}>
+          <button className="btn toast-btn" aria-label="Dismiss" onClick={() => setToast(null)}>
             ✕
           </button>
         </div>
@@ -384,8 +412,8 @@ export function App({ backend }: { backend: Backend }) {
 
       {help && (
         <div className="overlay" onClick={() => setHelp(false)}>
-          <div className="help" onClick={(e) => e.stopPropagation()}>
-            <h2>Keyboard</h2>
+          <div className="help" role="dialog" aria-label="Keyboard shortcuts" onClick={(e) => e.stopPropagation()}>
+            <h2>Keyboard shortcuts</h2>
             <dl>
               {KEYS.map(([k, d]) => (
                 <div key={k}>

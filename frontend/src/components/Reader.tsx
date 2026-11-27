@@ -3,6 +3,7 @@ import type { Backend } from "../api";
 import { dueLabel, urgency } from "../format";
 import { BUCKET_LABEL, type Bucket, type Item, type MessageDetail, type RuleScope } from "../types";
 import { MoveMenu } from "./MoveMenu";
+import { Chevron } from "./Pixels";
 
 interface Props {
   id: string;
@@ -74,12 +75,12 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
     <aside className="reader" aria-label="Email">
       <div className="reader-bar">
         <button className="btn ghost" onClick={onClose} title="Close (Esc)">
-          ✕ Close
+          Close
         </button>
         <div className="row-actions always">
           {msg.gmail_url && (
             <a className="btn ghost" href={msg.gmail_url} target="_blank" rel="noopener noreferrer">
-              Open in Gmail ↗
+              Open in Gmail
             </a>
           )}
           <MoveMenu item={msg} onMove={(b, s) => onMove(msg, b, s)} />
@@ -88,18 +89,23 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
           </button>
         </div>
       </div>
-      <div className={`verdict verdict-${msg.bucket}`}>
+      <div className={`verdict verdict-${msg.bucket} edge-${msg.bucket === "needs_you" ? u : msg.bucket}`}>
         <div className="verdict-top">
           <span className={`pill pill-${msg.bucket}`}>{BUCKET_LABEL[msg.bucket]}</span>
-          <span className="muted small">
+          <span className="verdict-source">
             {SOURCE_TEXT[msg.source]}
-            {msg.source === "model" && ` · ${msg.confidence} confidence`}
+            {msg.source === "model" && `, ${msg.confidence} confidence`}
           </span>
           {msg.deadline && <span className={`due due-${u}`}>{dueLabel(msg.deadline, now)}</span>}
         </div>
         <p className="verdict-summary">{msg.summary}</p>
         <p className="verdict-reason">{msg.reason}</p>
-        {msg.action && <p className="next-step">→ {msg.action}</p>}
+        {msg.action && (
+          <p className="next-step">
+            <Chevron size={9} />
+            {msg.action}
+          </p>
+        )}
       </div>
       <header className="mail-head">
         <h2>{msg.subject}</h2>
@@ -107,7 +113,7 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
           <strong>{msg.from_name}</strong> <span className="muted">&lt;{msg.from_email}&gt;</span>
         </p>
         <p className="small muted">
-          to {msg.to} · {new Date(msg.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+          To {msg.to}, {new Date(msg.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
         </p>
       </header>
       <div className="mail-body">

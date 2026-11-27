@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "@fontsource-variable/host-grotesk";
 import { httpBackend } from "./api";
 import { App } from "./App";
 import { staticBackend } from "./staticBackend";

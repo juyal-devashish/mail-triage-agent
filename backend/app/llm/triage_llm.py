@@ -36,11 +36,12 @@ from app.domain.verdict import ModelVerdict
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "v2"  # v2: conversations, not single emails (docs/adr/0001)
+PROMPT_VERSION = "v3"  # v2: conversations (docs/adr/0001); v3: job-search rules and the profile
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 MAX_BODY_CHARS = 6000  # the latest email
 MAX_EARLIER_CHARS = 1500  # each earlier email
 MAX_EARLIER_TOTAL = 6000  # all earlier emails together; the oldest are dropped first
+MAX_PROFILE_CHARS = 6000
 # SDK errors that mean every later call would fail too. Rate limits, timeouts, connection errors and
 # 5xx are retried by the SDK (2 retries) and, if they still fail, recorded per message.
 FATAL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError", "BadRequestError"}
@@ -83,6 +84,16 @@ Who wrote last matters. If the latest email is theirs (you), the ball is usually
 person's court and the conversation does not need them, unless they promised something with a due
 date that is close, or a due date in the conversation is close. If someone wrote after their
 reply, judge that newest email: a follow-up chasing something they promised needs them.
+
+Job search: they are looking for a job, so use the "job" category for recruiters, applications,
+assessments, interviews and offers, and sort these carefully:
+- "needs_you": a recruiter or hiring manager writing to them personally, an interview invitation
+  or a request to schedule one, an assessment or take-home with a deadline, an offer, or any
+  request for documents or information.
+- "fyi": an application moving forward when nothing is asked of them, and rejections, so they
+  can close the application out.
+- "noise": automated "we received your application" confirmations, job-board alerts and
+  digests, and mass recruiter postings that aren't addressed to them.
 
 Phishing: if the sender's domain doesn't match the organisation it claims to be, or it pressures
 the reader to follow a link to verify or avoid suspension, call it "noise" with category
@@ -265,15 +276,33 @@ def corrections_block(corrections: Sequence[tuple[Conversation, str, str]]) -> s
     return "\n".join(lines)
 
 
+def profile_block(profile: str | None) -> str | None:
+    """The owner's profile, written by them: who matters, what they're working on, what is always noise."""
+    if not profile or not profile.strip():
+        return None
+    text = profile.strip()
+    if len(text) > MAX_PROFILE_CHARS:
+        text = text[:MAX_PROFILE_CHARS] + "\n[...profile truncated]"
+    return (
+        "About the person you triage for, in their own words. Use it to judge who and what matters to "
+        "them; the policy above still decides what each section means.\n\n<profile>\n" + text + "\n</profile>"
+    )
+
+
 def build_request(
     conversation: Conversation,
     corrections: Sequence[tuple[Conversation, str, str]],
     model: str,
     effort: str,
     max_tokens: int,
+    profile: str | None = None,
 ) -> dict[str, Any]:
-    """Messages API arguments. The policy comes first and is cached; corrections and the conversation vary."""
-    system: list[dict[str, Any]] = [{"type": "text", "text": POLICY, "cache_control": {"type": "ephemeral"}}]
+    """Messages API arguments. The policy and the profile come first and are cached; the rest varies."""
+    system: list[dict[str, Any]] = [{"type": "text", "text": POLICY}]
+    about = profile_block(profile)
+    if about:
+        system.append({"type": "text", "text": about})
+    system[-1]["cache_control"] = {"type": "ephemeral"}  # cache through the last stable block
     guidance = corrections_block(corrections)
     if guidance:
         system.append({"type": "text", "text": guidance})
@@ -362,6 +391,7 @@ def triage(
     cache: ResponseCache,
     *,
     corrections: Sequence[tuple[Conversation, str, str]] = (),
+    profile: str | None = None,
     model: str,
     effort: str = "low",
     max_tokens: int = 4000,
@@ -378,7 +408,7 @@ def triage(
     """
     summary = RunSummary()
     for conv in conversations:
-        kwargs = build_request(conv, corrections, model, effort, max_tokens)
+        kwargs = build_request(conv, corrections, model, effort, max_tokens, profile)
         key = request_key(kwargs)
         attempt = Attempt(conv.id, conv.latest.id, "error", model)
         row = cache.get(key)
@@ -411,9 +441,11 @@ def triage(
     return summary
 
 
-def estimate_cost(conversations: Sequence[Conversation], input_price: float, output_price: float) -> dict[str, float]:
+def estimate_cost(
+    conversations: Sequence[Conversation], input_price: float, output_price: float, profile: str | None = None
+) -> dict[str, float]:
     """Rough cost before a run: about 4 characters per token, plus the policy and ~300 output tokens each."""
-    policy_tokens = len(POLICY) / 4
+    policy_tokens = (len(POLICY) + len(profile_block(profile) or "")) / 4
     input_tokens = sum(policy_tokens + len(conversation_block(c)) / 4 for c in conversations)
     output_tokens = 300 * len(conversations)
     usd = (input_tokens * input_price + output_tokens * output_price) / 1_000_000

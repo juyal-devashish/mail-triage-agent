@@ -42,7 +42,21 @@ cd backend
 A browser window opens for consent. The token is written to `~/.config/mail-triage-agent/token.json`,
 readable only by you.
 
-## 3. Triage and review
+## 3. Write your profile
+
+Your profile tells Claude who and what matters to you. It lives at
+`~/.config/mail-triage-agent/profile.md`, readable only by you, and goes into every triage request.
+
+```sh
+MTA_PROVIDER=gmail .venv/bin/python -m app.cli profile --draft
+```
+
+`--draft` suggests the people you've written to most in the last 90 days, and senders whose mail you
+leave unread. It reads Gmail headers only (who and when), never email bodies, and makes no Claude
+calls. Without `--draft` you get a blank template. Neither overwrites an existing profile. Edit it
+before your first triage: delete suggestions that don't belong and add what you're working on.
+
+## 4. Triage and review
 
 ```sh
 export MTA_PROVIDER=gmail

@@ -6,6 +6,7 @@ Command line. Run from backend/ with the virtualenv: `python -m app.cli <command
   triage     triage what has no answer yet; live calls need --live and stop at --max-calls
   gmail-login  sign in to Gmail once (browser consent); see docs/gmail.md
   export-static  write the SYNTHETIC demo snapshot the hosted page reads
+  profile    create your profile (blank, or --draft from Gmail headers); never overwrites
   eval       score stored answers for the synthetic inbox against its answer key
 """
 
@@ -86,14 +87,15 @@ def cmd_estimate(cfg: Settings, args: argparse.Namespace) -> int:
     todo = _todo(store, args.force)
     cache = cache_for(cfg)
     p = params_for(cfg)
+    about = profile_for(cfg)
+    corrections = store.recent_corrections()
     from app.llm.triage_llm import build_request, request_key
 
-    uncached = [
-        m
-        for m in todo
-        if cache.get(request_key(build_request(m, store.recent_corrections(), p.model, p.effort, p.max_tokens))) is None
-    ]
-    est = estimate_cost(uncached, cfg.input_price, cfg.output_price)
+    def cached(c: Conversation) -> bool:
+        return cache.get(request_key(build_request(c, corrections, p.model, p.effort, p.max_tokens, about))) is not None
+
+    uncached = [c for c in todo if not cached(c)]
+    est = estimate_cost(uncached, cfg.input_price, cfg.output_price, about)
     print(
         f"{len(todo)} to triage, {len(uncached)} not cached: ~{est['input_tokens']:,} input tokens, "
         f"~${est['usd']:.2f} on {p.model} (rough estimate; thinking tokens can add more)"
@@ -116,6 +118,7 @@ def cmd_triage(cfg: Settings, args: argparse.Namespace) -> int:
         max_tokens=p.max_tokens,
         max_calls=max_calls if args.live else 0,
         force=args.force,
+        profile=profile_for(cfg),
     )
     s = result.summary
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -147,6 +150,36 @@ def cmd_eval(cfg: Settings, args: argparse.Namespace) -> int:
     if args.write:
         (BACKEND.parent / "docs" / "results.md").write_text(text, encoding="utf-8")
         print("wrote docs/results.md")
+    return 0
+
+
+def profile_for(cfg: Settings) -> str | None:
+    """Your profile goes into real-mail triage only; the synthetic inbox is someone else's."""
+    from app.profile import load
+
+    return load(cfg.profile_file) if cfg.provider == "gmail" else None
+
+
+def cmd_profile(cfg: Settings, args: argparse.Namespace) -> int:
+    from app import profile
+
+    path = cfg.profile_file
+    if path.exists():
+        print(f"{path} already exists; edit it directly (nothing was overwritten).")
+        return 0
+    if args.draft:
+        if cfg.provider != "gmail":
+            print("--draft reads your Gmail headers: set MTA_PROVIDER=gmail and sign in first.", file=sys.stderr)
+            return 2
+        gmail = provider_for(cfg)
+        recipients, received = gmail.profile_signals(days=args.days)  # type: ignore[attr-defined]
+        text = profile.draft(
+            profile.top_recipients(recipients, gmail.me), profile.mostly_unread(received), days=args.days
+        )
+    else:
+        text = profile.template()
+    profile.write_new(path, text)
+    print(f"Wrote {path} (only you can read it). Edit it before your first triage.")
     return 0
 
 
@@ -217,6 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("eval", help="score stored answers for the synthetic inbox against its answer key")
     p.add_argument("--write", action="store_true", help="also write docs/results.md")
     sub.add_parser("gmail-login", help="sign in to Gmail once (browser consent)")
+    p = sub.add_parser("profile", help="create your profile; never overwrites an existing one")
+    p.add_argument("--draft", action="store_true", help="suggest people and noise from Gmail headers (no bodies)")
+    p.add_argument("--days", type=int, default=90, help="how far back --draft looks (default 90)")
     sub.add_parser("export-static", help="write the SYNTHETIC demo snapshot for the hosted page")
     args = parser.parse_args(argv)
     cfg = settings()
@@ -228,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
             "eval": cmd_eval,
             "gmail-login": cmd_gmail_login,
             "export-static": cmd_export_static,
+            "profile": cmd_profile,
         }[args.command](cfg, args)
     except Exception as exc:
         if type(exc).__name__ == "GmailSetupError":

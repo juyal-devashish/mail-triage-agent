@@ -33,6 +33,7 @@ Run from `backend/` with `.venv/bin/python -m app.cli <command>`:
 | `estimate` | Rough cost of triaging whatever has no verdict yet. No API calls. |
 | `triage --live --max-calls N` | Ask Claude about up to N emails that have no verdict yet. Without `--live`, cache only. |
 | `gmail-login` | Sign in to Gmail once (see docs/gmail.md). |
+| `profile [--draft]` | Create your profile: blank, or with suggestions from your Gmail headers. Never overwrites. |
 | `eval --write` | Score the synthetic inbox against its answer key and rewrite docs/results.md. |
 | `export-static` | Write the synthetic demo snapshot for the hosted page. |
 

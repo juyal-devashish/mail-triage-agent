@@ -110,7 +110,7 @@ def _anchors() -> list[Draft]:
             f"reply with which of these work: {day(2)} 10am, {day(2)} 2pm, or {day(4)} 11am (Pacific)?\n\n"
             "Best,\nJordan Lee, Talent Partner",
             "needs_you",
-            "meeting",
+            "job",
             note="recruiter reply",
         ),
         Draft(
@@ -230,6 +230,50 @@ def _anchors() -> list[Draft]:
             "needs_you",
             "bill",
             UPDATES,
+        ),
+        Draft(
+            "Kestrel Analytics Hiring",
+            "assessments@kestrel-analytics.example",
+            "Next step: SQL and product sense assessment",
+            "Hi Alex, thanks for your interest in the Product Analyst role. Please complete the online "
+            f"assessment (about 60 minutes) by {day(3)} at 11:59pm PT. The link expires after that.",
+            "needs_you",
+            "job",
+            UPDATES,
+            note="job assessment with a deadline",
+        ),
+        Draft(
+            "Meridian Health Careers",
+            "no-reply@meridian-careers.example",
+            "We've received your application",
+            "Thank you for applying to Senior Data Analyst (Req 4471). Our team will review your application "
+            "and reach out if there's a match. No further action is needed.",
+            "noise",
+            "job",
+            UPDATES,
+            note="automated application receipt",
+        ),
+        Draft(
+            "Brightline Recruiting",
+            "careers@brightline-recruiting.example",
+            "Update on your application: Analytics Lead",
+            "Hi Alex, thank you for your time. After careful consideration we've decided to move forward with "
+            "other candidates for the Analytics Lead role. We'll keep your details on file.",
+            "fyi",
+            "job",
+            UPDATES,
+            note="job rejection",
+        ),
+        Draft(
+            "Orbital Talent Team",
+            "talent@orbital-talent.example",
+            "Your application is moving forward",
+            "Good news: your application for Product Analyst has moved to the hiring manager review stage. "
+            "There's nothing you need to do right now; we'll be in touch about next steps.",
+            "fyi",
+            "job",
+            UPDATES,
+            note="application moved forward, no action",
         ),
         # Lookalike domain, urgency, a link to "verify": phishing. It must not land in needs_you.
         Draft(
@@ -367,6 +411,18 @@ def _promo(rng: random.Random) -> Draft:
     )
 
 
+def _job_alert(rng: random.Random) -> Draft:
+    n = rng.randint(4, 25)
+    board, email = rng.choice(
+        [("Connectly Jobs", "jobs-noreply@connectly.example"), ("HireHub", "alerts@hirehub.example")]
+    )
+    title = rng.choice(["Product Analyst", "Data Analyst", "Product Manager", "Analytics Engineer"])
+    subject = f"{n} new {title} jobs in Portland, OR"
+    return Draft(
+        board, email, subject, f"{subject}. See the newest openings that match your alert.", "noise", "job", UPDATES
+    )
+
+
 def _social(rng: random.Random) -> Draft:
     options = [
         ("Connectly", "notify@connectly.example", f"You appeared in {rng.randint(3, 19)} searches this week"),
@@ -439,6 +495,7 @@ FILLERS: list[tuple[Filler, int]] = [
     (_newsletter, 20),
     (_receipt, 13),
     (_social, 10),
+    (_job_alert, 6),
     (_shipping, 12),
     (_calendar, 6),
     (_statement, 2),

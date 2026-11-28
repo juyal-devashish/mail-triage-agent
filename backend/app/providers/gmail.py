@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
-from email.utils import parseaddr
+from email.utils import getaddresses, parseaddr
 from pathlib import Path
 from typing import Any
 
@@ -197,6 +197,60 @@ class GmailProvider:
             if "DRAFT" not in raw.get("labelIds", [])  # unsent drafts aren't part of the conversation yet
         ]
         return sorted(messages, key=lambda m: m.date, reverse=True)
+
+    # --- profile signals: headers only, never bodies -------------------------------------------------
+
+    def _list_ids(self, q: str, cap: int) -> list[str]:
+        users = self.service.users()
+        ids: list[str] = []
+        page = None
+        while len(ids) < cap:
+            resp = (
+                users.messages().list(userId="me", q=q, pageToken=page, maxResults=min(500, cap - len(ids))).execute()
+            )
+            ids += [m["id"] for m in resp.get("messages", [])]
+            page = resp.get("nextPageToken")
+            if not page:
+                break
+        return ids
+
+    def _headers(self, ids: list[str], names: list[str]) -> list[dict[str, Any]]:
+        """format=metadata gets: only the named headers and the labels come back."""
+        users = self.service.users()
+        out: dict[str, dict[str, Any]] = {}
+
+        def collect(request_id: str, response: dict[str, Any], exception: Exception | None) -> None:
+            if exception is None:
+                out[request_id] = response
+
+        for start in range(0, len(ids), 50):
+            batch = self.service.new_batch_http_request(callback=collect)
+            for mid in ids[start : start + 50]:
+                req = users.messages().get(userId="me", id=mid, format="metadata", metadataHeaders=names)
+                batch.add(req, request_id=mid)
+            batch.execute()
+        return [out[i] for i in ids if i in out]  # a few misses only weaken suggestions; no retry needed
+
+    def profile_signals(
+        self, days: int = 90, cap: int = 1500
+    ) -> tuple[list[tuple[str, str]], list[tuple[str, str, bool]]]:
+        """Who the owner writes to (name, address), and what they receive (name, address, unread)."""
+        sent = self._headers(self._list_ids(f"in:sent newer_than:{days}d", cap), ["To", "Cc"])
+        recipients: list[tuple[str, str]] = []
+        for raw in sent:
+            for h in raw.get("payload", {}).get("headers", []):
+                if h["name"].lower() in ("to", "cc"):
+                    recipients += getaddresses([h["value"]])
+        q = f"newer_than:{days}d -in:sent -in:chats -in:spam -in:trash"
+        received: list[tuple[str, str, bool]] = []
+        for raw in self._headers(self._list_ids(q, cap), ["From"]):
+            frm = next(
+                (h["value"] for h in raw.get("payload", {}).get("headers", []) if h["name"].lower() == "from"), ""
+            )
+            name, addr = parseaddr(frm)
+            if addr:
+                received.append((name, addr, "UNREAD" in raw.get("labelIds", [])))
+        return recipients, received
 
     def modify(self, ids: list[str], add: list[str], remove: list[str]) -> None:
         bad = (set(add) | set(remove)) - ALLOWED_LABEL_CHANGES

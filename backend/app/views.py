@@ -22,6 +22,7 @@ CATEGORY_LABELS: dict[Category, str] = {
     "bill": "Bills",
     "security": "Security",
     "personal": "Personal",
+    "job": "Job leads",  # noise in the job category is job-board alerts and mass postings
     "newsletter": "Newsletters",
     "promo": "Promotions",
     "notification": "Notifications",

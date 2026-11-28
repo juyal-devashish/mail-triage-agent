@@ -19,6 +19,7 @@ backend/runs/
 credentials*.json
 client_secret*.json
 token*.json
+profile.md
 
 # Frontend
 frontend/node_modules/

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     db_path: Path | None = None  # default: data/<provider>.db, so real and synthetic mail never mix
 
     @property
+    def profile_file(self) -> Path:
+        return self.profile_path or self.gmail_dir / "profile.md"
+
+    @property
     def database(self) -> Path:
         return self.db_path or BACKEND / "data" / f"{self.provider}.db"
 
@@ -32,8 +36,9 @@ class Settings(BaseSettings):
     input_price: float = 2.0
     output_price: float = 10.0
 
-    # Gmail
+    # Gmail, and the owner's profile (both outside the repo)
     gmail_dir: Path = Path.home() / ".config" / "mail-triage-agent"
+    profile_path: Path | None = None  # default: <gmail_dir>/profile.md
     gmail_days: int = 14  # docs/plan-gmail.md: the first sync covers two weeks
     gmail_max_threads: int = 300
 

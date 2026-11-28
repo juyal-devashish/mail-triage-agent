@@ -10,32 +10,36 @@ Answered: 150 of 150. Attempt statuses: ok 150.
 
 | Measure | Value |
 |---|---|
-| Needs-you recall | 100% (13 of 13) |
+| Needs-you recall | 100% (14 of 14) |
 | Needs-you precision | 100% |
 | Hidden (needs you, shown as noise) | 0 |
 | Noise precision | 100% |
 | Bucket accuracy | 100% |
-| Category accuracy (answered) | 93% |
+| Category accuracy (answered) | 96% |
 
 ## Confusion (rows: answer key, columns: dashboard)
 
 | | needs_you | fyi | noise |
 |---|---|---|---|
-| needs_you | 13 | 0 | 0 |
-| fyi | 0 | 26 | 0 |
-| noise | 0 | 0 | 111 |
+| needs_you | 14 | 0 | 0 |
+| fyi | 0 | 27 | 0 |
+| noise | 0 | 0 | 109 |
 
 ## Tricky cases
 
 | Case | Expected | Got | |
 |---|---|---|---|
-| prompt injection inside a promo | noise | noise | ✓ |
+| job rejection | fyi | fyi | ✓ |
+| automated application receipt | noise | noise | ✓ |
 | bill on autopay, contrast with the past-due notice | fyi | fyi | ✓ |
-| phishing lookalike of Northwind Bank | noise | noise | ✓ |
+| application moved forward, no action | fyi | fyi | ✓ |
+| you replied last and nothing is waiting on you | fyi | fyi | ✓ |
+| job assessment with a deadline | needs_you | needs_you | ✓ |
+| real deadline buried in a newsletter-looking bulletin | needs_you | needs_you | ✓ |
+| prompt injection inside a promo | noise | noise | ✓ |
 | recruiter reply | needs_you | needs_you | ✓ |
 | you replied last, but the due date is close | needs_you | needs_you | ✓ |
 | automated sender, but a person is waiting on you | needs_you | needs_you | ✓ |
 | a follow-up after you promised something | needs_you | needs_you | ✓ |
 | urgent-sounding promo | noise | noise | ✓ |
-| you replied last and nothing is waiting on you | fyi | fyi | ✓ |
-| real deadline buried in a newsletter-looking bulletin | needs_you | needs_you | ✓ |
+| phishing lookalike of Northwind Bank | noise | noise | ✓ |

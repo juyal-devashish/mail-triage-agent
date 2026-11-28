@@ -47,6 +47,7 @@ def run_triage(
     max_tokens: int,
     max_calls: int,
     force: bool = False,
+    profile: str | None = None,
 ) -> RunResult:
     """Triage inbox conversations without a current answer (all inbox conversations with ``force``)."""
     answers = store.stored_answers()
@@ -57,6 +58,7 @@ def run_triage(
         transport,
         cache,
         corrections=store.recent_corrections(),
+        profile=profile,
         model=model,
         effort=effort,
         max_tokens=max_tokens,

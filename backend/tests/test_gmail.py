@@ -201,3 +201,36 @@ def test_failed_gets_stop_the_sync_instead_of_hiding_mail(monkeypatch):
     with pytest.raises(gm.GmailSetupError):
         sync(store, p)
     assert "INBOX" in store.message("k1").labels
+
+
+def test_profile_signals_read_headers_only():
+    p, fake = gmail_provider([RAW, SENT_REPLY])
+    calls = []
+
+    def list_messages(**kw):
+        calls.append(kw["q"])
+        ids = ["18c1b"] if kw["q"].startswith("in:sent") else ["18c1a"]
+        return Exec({"messages": [{"id": i} for i in ids]})
+
+    fake.list = list_messages
+    by_id = {"18c1a": RAW, "18c1b": SENT_REPLY}
+    orig_get = fake.get
+
+    def get(userId, id, format, metadataHeaders=None):  # noqa: A002, N803 - mirrors the API
+        assert format == "metadata"  # never the body
+        return orig_get(userId, id, format)
+
+    fake.get = get
+    fake.raws_by_request = by_id
+    orig_batch = fake.new_batch_http_request
+
+    def batch(callback):
+        b = orig_batch(callback)
+        b.execute = lambda: [callback(rid, by_id[rid], None) for rid in b.items]
+        return b
+
+    fake.new_batch_http_request = batch
+    recipients, received = p.profile_signals(days=90)
+    assert any("in:sent newer_than:90d" in q for q in calls)
+    assert recipients == [("", "billing@brightside-energy.example")]
+    assert received == [("Brightside Energy", "Billing@Brightside-Energy.example", True)]

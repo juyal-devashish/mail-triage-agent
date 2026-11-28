@@ -3,6 +3,8 @@ import json
 from app.evals import evaluate, report, synthetic_conversations
 from app.llm.triage_llm import ResponseCache, build_request, request_key
 
+NEEDS = sum(t.bucket == "needs_you" for t in synthetic_conversations()[1].values())
+
 
 def cache_from(answers_for):
     """A cache holding a stored response for every synthetic conversation, built from a function of the truth."""
@@ -47,18 +49,18 @@ def test_perfect_answers_score_perfectly():
     r = run(lambda m, t: (t.bucket, "high"))
     assert r.answered == 150 and r.accuracy == 1.0 and r.needs_recall == 1.0 and r.hidden == []
     assert all(ok for *_, ok in r.tricky)
-    assert "| Needs-you recall | 100% (13 of 13) |" in report(r, "m", "low")
+    assert f"| Needs-you recall | 100% ({NEEDS} of {NEEDS}) |" in report(r, "m", "low")
 
 
 def test_hidden_counts_needs_you_shown_as_noise():
     r = run(lambda m, t: ("noise", "high") if t.bucket == "needs_you" else (t.bucket, "high"))
-    assert len(r.hidden) == 13 and r.needs_recall == 0.0
+    assert len(r.hidden) == NEEDS and r.needs_recall == 0.0
 
 
 def test_low_confidence_noise_is_scored_as_shown():
     # the model says noise for everything needing you, but unsure: the dashboard shows them in fyi
     r = run(lambda m, t: ("noise", "low") if t.bucket == "needs_you" else (t.bucket, "high"))
-    assert r.hidden == [] and r.count(truth="needs_you", pred="fyi") == 13
+    assert r.hidden == [] and r.count(truth="needs_you", pred="fyi") == NEEDS
 
 
 def test_no_stored_answers_means_nothing_hidden():

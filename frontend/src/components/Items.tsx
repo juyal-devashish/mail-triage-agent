@@ -71,7 +71,7 @@ export function NeedsRow({ item, now, focused, open, ...h }: NeedsProps) {
         )}
       </div>
       <div className="need-actions" onClick={(e) => e.stopPropagation()}>
-        <button className="btn" onClick={() => h.onArchive([item.id], "1 email")} title="Done: archive it (e)">
+        <button className="btn" onClick={() => h.onArchive([item.id], "1 conversation")} title="Done: archive it (e)">
           Done
         </button>
         <MoveMenu item={item} onMove={(b, s) => h.onMove(item, b, s)} />
@@ -114,11 +114,11 @@ export function Row({ item, now, focused, open, showReason, ...h }: RowProps) {
       </time>
       <span className="row-actions" onClick={(e) => e.stopPropagation()}>
         {item.unread && (
-          <button className="btn ghost" onClick={() => h.onMarkRead([item.id], "1 email")} title="Mark read (m)">
+          <button className="btn ghost" onClick={() => h.onMarkRead([item.id], "1 conversation")} title="Mark read (m)">
             Mark read
           </button>
         )}
-        <button className="btn ghost" onClick={() => h.onArchive([item.id], "1 email")} title="Archive (e)">
+        <button className="btn ghost" onClick={() => h.onArchive([item.id], "1 conversation")} title="Archive (e)">
           Archive
         </button>
         <MoveMenu item={item} onMove={(b, s) => h.onMove(item, b, s)} />

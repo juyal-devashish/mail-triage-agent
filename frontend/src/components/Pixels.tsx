@@ -35,8 +35,8 @@ interface InboxPixelsProps {
 }
 
 /**
- * The whole inbox at a glance: one square per email, needs-you first, then worth-knowing, then noise.
- * Squares disappear as mail is archived. Each square opens its email.
+ * The whole inbox at a glance: one square per conversation, needs-you first, then worth-knowing, then noise.
+ * Squares disappear as mail is archived. Each square opens its conversation.
  */
 export function InboxPixels({ inbox, onOpen }: InboxPixelsProps) {
   const runs: [Item["bucket"], Item[]][] = [
@@ -46,7 +46,7 @@ export function InboxPixels({ inbox, onOpen }: InboxPixelsProps) {
   ];
   let n = 0;
   return (
-    <div className="pixels" role="list" aria-label={`${inbox.counts.inbox} emails in your inbox`}>
+    <div className="pixels" role="list" aria-label={`${inbox.counts.inbox} conversations in your inbox`}>
       {runs.map(([bucket, items]) =>
         items.map((item) => (
           <button

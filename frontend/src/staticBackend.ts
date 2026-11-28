@@ -3,7 +3,7 @@
 // behaves like the real app, and resets on reload. No server, no model calls, no real mail.
 
 import type { Backend } from "./api";
-import { BUCKET_LABEL, type Action, type ActionResult, type Bucket, type Inbox, type Item, type MessageDetail, type NoiseGroup } from "./types";
+import { BUCKET_LABEL, type Action, type ActionResult, type Bucket, type Inbox, type Item, type ConversationDetail, type NoiseGroup } from "./types";
 
 interface State {
   base: Inbox; // as exported: the model's verdicts
@@ -83,11 +83,11 @@ function redecide(s: State, item: Item): Item {
 export const staticBackend: Backend = {
   inbox: async () => view(await load()),
 
-  message: async (id) => {
+  conversation: async (id) => {
     const s = await load();
-    const r = await fetch(`./demo/messages/${encodeURIComponent(id)}.json`);
-    if (!r.ok) throw new Error(`no such message (${r.status})`);
-    const detail = (await r.json()) as MessageDetail;
+    const r = await fetch(`./demo/conversations/${encodeURIComponent(id)}.json`);
+    if (!r.ok) throw new Error(`no such conversation (${r.status})`);
+    const detail = (await r.json()) as ConversationDetail;
     return { ...detail, ...s.items.get(id) };
   },
 
@@ -123,7 +123,7 @@ export const staticBackend: Backend = {
   correct: async (id, bucket, scope) => {
     const s = await load();
     const item = s.items.get(id);
-    if (!item) throw new Error("no such message");
+    if (!item) throw new Error("no such conversation");
     s.items.set(id, { ...item, bucket, source: "correction", reason: `You moved this to ${BUCKET_LABEL[bucket]}.` });
     if (scope === "none") return { touched: [id] };
     const pattern = scope === "sender" ? item.from_email.toLowerCase() : item.from_email.split("@")[1].toLowerCase();

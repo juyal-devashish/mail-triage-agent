@@ -126,7 +126,7 @@ export function App({ backend }: { backend: Backend }) {
   const undo = useCallback(() => {
     void run(async () => {
       const r = await backend.undo(toast?.batchId ?? null);
-      return r.batch_id ? { text: `Restored ${plural(r.changed.length, "email")}`, batchId: null } : { text: "Nothing to undo", batchId: null };
+      return r.batch_id ? { text: `Restored ${plural(r.changed.length, "conversation")}`, batchId: null } : { text: "Nothing to undo", batchId: null };
     });
   }, [backend, run, toast]);
 
@@ -165,12 +165,12 @@ export function App({ backend }: { backend: Backend }) {
             });
           break;
         case "e":
-          if (cur?.kind === "msg") handlers.onArchive([cur.item.id], "1 email");
-          else if (cur?.kind === "group") handlers.onArchive(cur.items.map((i) => i.id), plural(cur.items.length, "email"));
+          if (cur?.kind === "msg") handlers.onArchive([cur.item.id], "1 conversation");
+          else if (cur?.kind === "group") handlers.onArchive(cur.items.map((i) => i.id), plural(cur.items.length, "conversation"));
           break;
         case "m":
-          if (cur?.kind === "msg") handlers.onMarkRead([cur.item.id], "1 email");
-          else if (cur?.kind === "group") handlers.onMarkRead(cur.items.map((i) => i.id), plural(cur.items.length, "email"));
+          if (cur?.kind === "msg") handlers.onMarkRead([cur.item.id], "1 conversation");
+          else if (cur?.kind === "group") handlers.onMarkRead(cur.items.map((i) => i.id), plural(cur.items.length, "conversation"));
           break;
         case "1":
         case "2":
@@ -222,7 +222,7 @@ export function App({ backend }: { backend: Backend }) {
   const allNoise = inbox.noise.flatMap((g) => g.items.map((i) => i.id));
   const unreadFyi = inbox.fyi.filter((i) => i.unread).map((i) => i.id);
   const headline =
-    c.needs_you === 0 ? "Nothing needs you right now." : `${plural(c.needs_you, "email")} ${c.needs_you === 1 ? "needs" : "need"} you.`;
+    c.needs_you === 0 ? "Nothing needs you right now." : `${plural(c.needs_you, "conversation")} ${c.needs_you === 1 ? "needs" : "need"} you.`;
 
   return (
     <div className={`app${openId ? " reading" : ""}`}>
@@ -242,7 +242,7 @@ export function App({ backend }: { backend: Backend }) {
           Shortcuts <kbd>?</kbd>
         </button>
         {allNoise.length > 0 && (
-          <button className="cell cell-primary" onClick={() => handlers.onArchive(allNoise, plural(allNoise.length, "noise email"))}>
+          <button className="cell cell-primary" onClick={() => handlers.onArchive(allNoise, plural(allNoise.length, "noise conversation"))}>
             Archive all noise <Chevron />
           </button>
         )}
@@ -269,7 +269,7 @@ export function App({ backend }: { backend: Backend }) {
                 <li>
                   <span className="px px-noise" /> Noise
                 </li>
-                <li className="legend-note">One square per email. Click one to open it.</li>
+                <li className="legend-note">One square per conversation. Click one to open it.</li>
               </ul>
             </div>
           </section>
@@ -298,7 +298,7 @@ export function App({ backend }: { backend: Backend }) {
                 <h2 id="h-fyi">Worth knowing</h2>
                 <span className="count">{c.fyi}</span>
                 {unreadFyi.length > 0 && (
-                  <button className="btn ghost push" onClick={() => handlers.onMarkRead(unreadFyi, plural(unreadFyi.length, "email"))}>
+                  <button className="btn ghost push" onClick={() => handlers.onMarkRead(unreadFyi, plural(unreadFyi.length, "conversation"))}>
                     Mark all read
                   </button>
                 )}

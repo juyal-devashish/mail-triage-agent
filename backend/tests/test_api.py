@@ -4,26 +4,25 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from app.evals import synthetic_conversations
 from app.llm.triage_llm import ResponseCache
 from app.main import create_app
 from app.pipeline import run_triage
-from app.synth.inbox import generate
 from app.views import sanitize_html
 
-_, KEY = generate()
+CONVS, KEY = synthetic_conversations()
 
 
 def truth_transport(kwargs):
     """Answers with the answer key, so the API tests see a realistic mix without a model."""
-    email = kwargs["messages"][0]["content"]
-    subject = next(line[9:] for line in email.splitlines() if line.startswith("Subject: "))
-    msgs, _ = generate()
-    m = next(x for x in msgs if x.subject == subject)
-    t = KEY[m.id]
+    block = kwargs["messages"][0]["content"]
+    subject = next(line[9:] for line in block.splitlines() if line.startswith("Subject: "))
+    c = next(x for x in CONVS if x.subject == subject)
+    t = KEY[c.id]
     answer = {
         "bucket": t.bucket,
         "category": t.category,
-        "summary": m.subject,
+        "summary": c.subject,
         "reason": "r",
         "action": "Do it" if t.bucket == "needs_you" else None,
         "deadline": "2026-11-26" if t.category == "deadline" else None,
@@ -58,14 +57,24 @@ def test_inbox_grouping(client):
     assert all(i["category"] == g["category"] for g in data["noise"] for i in g["items"])
 
 
-def test_message_detail_is_sanitised(client):
+def test_conversation_detail_is_sanitised(client):
     data = client.get("/api/inbox").json()
     promo = data["noise"][0]["items"][0]
-    detail = client.get(f"/api/messages/{promo['id']}").json()
-    assert detail["body_text"]
-    if detail["body_html"]:
-        assert "<img" not in detail["body_html"] and "<script" not in detail["body_html"]
-    assert client.get("/api/messages/nope").status_code == 404
+    detail = client.get(f"/api/conversations/{promo['id']}").json()
+    assert detail["messages"] and detail["messages"][0]["body_text"]
+    for m in detail["messages"]:
+        if m["body_html"]:
+            assert "<img" not in m["body_html"] and "<script" not in m["body_html"]
+    assert client.get("/api/conversations/nope").status_code == 404
+
+
+def test_conversation_shows_every_email_and_who_wrote_last(client):
+    data = client.get("/api/inbox").json()
+    items = [i for i in data["needs_you"] + data["fyi"] if i["count"] > 1]
+    sam = next(i for i in items if i["from_name"] == "Sam Okafor")
+    assert sam["replied_last"] is True and sam["participants"] == ["Sam Okafor"]
+    detail = client.get(f"/api/conversations/{sam['id']}").json()
+    assert [m["mine"] for m in detail["messages"]] == [False, True]
 
 
 def test_sanitize_strips_tracking_and_scripts():
@@ -92,7 +101,7 @@ def test_archive_all_noise_group_then_undo(client, provider):
 def test_correct_moves_sender_and_rule_can_be_removed(client):
     data = client.get("/api/inbox").json()
     promo = next(i for g in data["noise"] for i in g["items"] if i["from_email"] == "deals@gearloft.example")
-    touched = client.post(f"/api/messages/{promo['id']}/correct", json={"bucket": "fyi"}).json()["touched"]
+    touched = client.post(f"/api/conversations/{promo['id']}/correct", json={"bucket": "fyi"}).json()["touched"]
     data = client.get("/api/inbox").json()
     fyi_ids = {i["id"] for i in data["fyi"]}
     assert set(touched) <= fyi_ids
@@ -109,4 +118,4 @@ def test_correct_moves_sender_and_rule_can_be_removed(client):
 def test_bad_requests_are_rejected(client):
     assert client.post("/api/actions", json={"action": "delete", "ids": ["x"]}).status_code == 422
     assert client.post("/api/actions", json={"action": "archive", "ids": []}).status_code == 422
-    assert client.post("/api/messages/nope/correct", json={"bucket": "fyi"}).status_code == 404
+    assert client.post("/api/conversations/nope/correct", json={"bucket": "fyi"}).status_code == 404

@@ -1,6 +1,6 @@
 """
 The REST API the dashboard talks to. Model calls never happen here: triage runs from the CLI, so
-a page load can't spend money. Every write is an explicit user action on given message IDs.
+a page load can't spend money. Every write is an explicit user action on given conversation IDs.
 
 Handlers are `async` on purpose: they run one at a time on the event loop, so the single SQLite
 connection and the undo log never see two writes interleave. Fine for one local user.
@@ -17,7 +17,7 @@ from app.pipeline import decide_all
 from app.providers import MailProvider
 from app.service import Action, RuleScope, apply_action, correct, undo
 from app.store import Store
-from app.views import inbox_view, message_view
+from app.views import conversation_view, inbox_view
 
 
 class ActionIn(BaseModel):
@@ -41,11 +41,11 @@ def create_app(store: Store, provider: MailProvider) -> FastAPI:
     async def get_inbox() -> dict[str, Any]:
         return inbox_view(store, provider.name)
 
-    @app.get("/api/messages/{message_id}")
-    async def get_message(message_id: str) -> dict[str, Any]:
-        view = message_view(store, provider.name, message_id)
+    @app.get("/api/conversations/{conversation_id}")
+    async def get_conversation(conversation_id: str) -> dict[str, Any]:
+        view = conversation_view(store, provider.name, conversation_id)
         if view is None:
-            raise HTTPException(404, "no such message")
+            raise HTTPException(404, "no such conversation")
         return view
 
     @app.post("/api/actions")
@@ -58,12 +58,12 @@ def create_app(store: Store, provider: MailProvider) -> FastAPI:
         res = undo(store, provider, body.batch_id)
         return {"batch_id": res.batch_id, "changed": res.changed}
 
-    @app.post("/api/messages/{message_id}/correct")
-    async def post_correct(message_id: str, body: CorrectIn) -> dict[str, Any]:
+    @app.post("/api/conversations/{conversation_id}/correct")
+    async def post_correct(conversation_id: str, body: CorrectIn) -> dict[str, Any]:
         try:
-            touched = correct(store, message_id, body.bucket, body.scope)
+            touched = correct(store, conversation_id, body.bucket, body.scope)
         except KeyError:
-            raise HTTPException(404, "no such message") from None
+            raise HTTPException(404, "no such conversation") from None
         return {"touched": touched}
 
     @app.delete("/api/rules/{pattern}")

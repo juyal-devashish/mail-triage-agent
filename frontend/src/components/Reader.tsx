@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Backend } from "../api";
 import { dueLabel, urgency } from "../format";
-import { BUCKET_LABEL, type Bucket, type Item, type MessageDetail, type RuleScope } from "../types";
+import { BUCKET_LABEL, type Bucket, type Item, type ConversationDetail, type Email, type RuleScope } from "../types";
 import { MoveMenu } from "./MoveMenu";
 import { Chevron } from "./Pixels";
 
@@ -35,7 +35,7 @@ const SOURCE_TEXT: Record<Item["source"], string> = {
 };
 
 export function Reader({ id, backend, now, version, onClose, onArchive, onMove }: Props) {
-  const [msg, setMsg] = useState<MessageDetail | null>(null);
+  const [msg, setMsg] = useState<ConversationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
@@ -43,7 +43,7 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
     let live = true;
     setError(null);
     backend
-      .message(id)
+      .conversation(id)
       .then((m) => live && setMsg(m))
       .catch((e: unknown) => live && setError(String(e)));
     return () => {
@@ -84,7 +84,7 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
             </a>
           )}
           <MoveMenu item={msg} onMove={(b, s) => onMove(msg, b, s)} />
-          <button className="btn" onClick={() => onArchive([msg.id], "1 email")}>
+          <button className="btn" onClick={() => onArchive([msg.id], "1 conversation")}>
             Archive
           </button>
         </div>
@@ -109,26 +109,54 @@ export function Reader({ id, backend, now, version, onClose, onArchive, onMove }
       </div>
       <header className="mail-head">
         <h2>{msg.subject}</h2>
-        <p className="small">
-          <strong>{msg.from_name}</strong> <span className="muted">&lt;{msg.from_email}&gt;</span>
-        </p>
         <p className="small muted">
-          To {msg.to}, {new Date(msg.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+          {msg.count === 1 ? "1 email" : `${msg.count} emails`} with {msg.participants.join(", ") || "you"}
         </p>
       </header>
-      <div className="mail-body">
-        {msg.body_html ? (
-          <iframe
-            title="Email body"
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
-            srcDoc={frameDoc(msg.body_html, dark)}
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <pre className="plain">{msg.body_text}</pre>
-        )}
-        {msg.body_html && <p className="muted small">Images and scripts are blocked in this view.</p>}
-      </div>
+      <ol className="thread">
+        {msg.messages.map((m, i) => (
+          <ThreadEmail key={m.id} email={m} dark={dark} startOpen={i === msg.messages.length - 1 || m.unread} />
+        ))}
+      </ol>
     </aside>
+  );
+}
+
+/** One email in the conversation. Earlier read emails start folded to a one-line preview, as in Gmail. */
+function ThreadEmail({ email, dark, startOpen }: { email: Email; dark: boolean; startOpen: boolean }) {
+  const [open, setOpen] = useState(startOpen);
+  const when = new Date(email.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  const preview = email.body_text.replace(/\s+/g, " ").slice(0, 140);
+  return (
+    <li className={`thread-email${open ? " open" : ""}${email.mine ? " mine" : ""}`}>
+      <button className="thread-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="thread-from">
+          {email.mine ? "You" : email.from_name}
+          {!email.mine && <span className="muted"> &lt;{email.from_email}&gt;</span>}
+        </span>
+        <time className="when" dateTime={email.date}>
+          {when}
+        </time>
+        {!open && <span className="thread-preview">{preview}</span>}
+      </button>
+      {open && (
+        <div className="mail-body">
+          <p className="small muted">To {email.to}</p>
+          {email.body_html ? (
+            <>
+              <iframe
+                title={`Email from ${email.from_name}`}
+                sandbox="allow-popups allow-popups-to-escape-sandbox"
+                srcDoc={frameDoc(email.body_html, dark)}
+                referrerPolicy="no-referrer"
+              />
+              <p className="muted small">Images and scripts are blocked in this view.</p>
+            </>
+          ) : (
+            <pre className="plain">{email.body_text}</pre>
+          )}
+        </div>
+      )}
+    </li>
   );
 }

@@ -52,8 +52,8 @@ make dev-backend   # in one terminal (with MTA_PROVIDER=gmail)
 make dev-frontend  # in another, then open http://localhost:5173
 ```
 
-`triage` syncs the last `MTA_GMAIL_DAYS` days of your inbox (default 7, at most
-`MTA_GMAIL_MAX_MESSAGES`), then asks Claude about messages that have no verdict yet. Live calls stop
+`triage` syncs the last `MTA_GMAIL_DAYS` days of your inbox (default 14, at most
+`MTA_GMAIL_MAX_THREADS`), then asks Claude about conversations that have no current verdict. Live calls stop
 at `--max-calls`; the rest show as "Not triaged yet" until the next run. Each email is asked about
 once; re-runs use the cache.
 

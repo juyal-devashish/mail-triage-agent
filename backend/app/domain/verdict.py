@@ -4,7 +4,8 @@ The verdict schema and the code that has the last word over the model.
 `ModelVerdict` is exactly what Claude must return. `decide` turns it (or its absence) into the
 verdict the dashboard shows, applying, in order:
 
-1. Sender rules from the user's corrections. An exact address beats a domain rule.
+1. Sender rules from the user's corrections, matched on the conversation's counterpart (the latest
+   sender who isn't the owner). An exact address beats a domain rule.
 2. No usable model answer: the email goes to `fyi`, so nothing is hidden by a failure.
 3. Low-confidence noise goes to `fyi`, so an unsure call stays visible.
 """
@@ -15,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.domain.types import Bucket, Category, Confidence, Message
+from app.domain.types import Bucket, Category, Confidence, Conversation, Message
 
 Source = Literal["model", "rule", "fallback", "correction"]
 
@@ -78,17 +79,17 @@ def _line(text: str | None, limit: int) -> str | None:
 
 
 def decide(
-    message: Message,
+    conversation: Conversation,
     answer: ModelVerdict | None,
     rules: list[SenderRule],
     fallback_reason: str = FALLBACK_REASON,
 ) -> Verdict:
-    rule = match_rule(message, rules)
+    rule = match_rule(conversation.counterpart, rules)
     if answer is None:
         base = Verdict(
             bucket="fyi",
             category="other",
-            summary=_line(message.subject, 200) or "",
+            summary=_line(conversation.subject, 200) or "",
             reason=fallback_reason,
             action=None,
             deadline=None,

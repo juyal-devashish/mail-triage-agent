@@ -5,10 +5,14 @@ export type Source = "model" | "rule" | "fallback" | "correction";
 export type Action = "archive" | "mark_read";
 export type RuleScope = "sender" | "domain" | "none";
 
+/** One conversation (a Gmail thread) as the dashboard lists it. from_* is the latest sender who isn't you. */
 export interface Item {
   id: string;
   from_name: string;
   from_email: string;
+  participants: string[];
+  count: number;
+  replied_last: boolean;
   subject: string;
   date: string;
   unread: boolean;
@@ -45,10 +49,20 @@ export interface Inbox {
   rules: Rule[];
 }
 
-export interface MessageDetail extends Item {
+export interface Email {
+  id: string;
+  from_name: string;
+  from_email: string;
   to: string;
+  date: string;
+  mine: boolean;
+  unread: boolean;
   body_text: string;
   body_html: string | null;
+}
+
+export interface ConversationDetail extends Item {
+  messages: Email[]; // oldest first
 }
 
 export interface ActionResult {
